@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes_documents import router as documents_router
 from app.api.routes import router
 from app.api.routes_meetings import router as meetings_router
 from app.config import VERSION, get_settings
@@ -93,6 +94,7 @@ app.add_middleware(
 
 # Контракт фронтенда (API.md) — то, под что уже написан lib/api.ts.
 app.include_router(meetings_router)
+app.include_router(documents_router)
 # Внутренний API: он богаче и остаётся доступен для будущего.
 app.include_router(router)
 

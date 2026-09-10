@@ -260,6 +260,7 @@ def normalize(
                 end=max(seg.end, seg.start),
                 text=text,
                 speaker=seg.speaker,
+                timing_estimated=seg.timing_estimated,
             )
         )
         prev_text = text

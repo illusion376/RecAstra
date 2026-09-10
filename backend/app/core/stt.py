@@ -85,17 +85,21 @@ def _speaker_of(*candidates: Any) -> str | None:
     решается позже, по смыслу реплик. Здесь только приводим к читаемому виду.
     """
     for c in candidates:
-        if c in (None, "", 0, "0"):
+        if c in (None, ""):
             continue
         text = str(c).strip()
         if not text:
             continue
+        if text.casefold() in {"специалист", "технический специалист", "разработчик", "менеджер"}:
+            return "Менеджер"
+        if text.casefold() in {"клиент", "заказчик"}:
+            return "Заказчик"
         # speaker_0 / SPEAKER_00 → «Говорящий 1» (нумерация с единицы,
         # иначе в интерфейсе появляется «Говорящий 0», что выглядит ошибкой).
         m = re.match(r"^speaker[_\-\s]?(\d+)$", text, re.IGNORECASE)
         if m:
             return f"Говорящий {int(m.group(1)) + 1}"
-        return f"Говорящий {text}" if text.isdigit() else text
+        return f"Говорящий {int(text) + 1}" if text.isdigit() else text
     return None
 
 
@@ -124,7 +128,7 @@ def _as_segment_list(payload: Any) -> list[dict[str, Any]] | None:
     """Достать плоский список реплик, если ответ устроен именно так."""
     raw = payload
     if isinstance(payload, dict):
-        for key in ("segments", "result", "results", "chunks", "response", "data"):
+        for key in ("segments", "sentences", "result", "results", "chunks", "response", "data"):
             if isinstance(payload.get(key), list):
                 raw = payload[key]
                 break
@@ -183,7 +187,7 @@ def _parse_flat_segments(raw: list[dict[str, Any]]) -> list[TranscriptSegment]:
             end = _ms_to_seconds(item["endTimeMs"])
 
         speaker = _speaker_of(
-            item.get("speaker"), item.get("speakerTag"), item.get("channelTag")
+            item.get("speaker"), item.get("speaker_id"), item.get("speakerTag"), item.get("channelTag")
         )
         prepared.append((start if start is not None else 0.0, end, text, speaker))
 
@@ -336,7 +340,7 @@ def _parse_speechkit_chunks(chunks: list[dict[str, Any]]) -> list[TranscriptSegm
 # ---------------------------------------------------------------------------
 
 
-def stt_to_segments(payload: Any) -> list[TranscriptSegment]:
+def _parse_stt_payload(payload: Any) -> list[TranscriptSegment]:
     """
     Привести ответ любого поддержанного сервиса к сегментам транскрипции.
 
@@ -350,7 +354,7 @@ def stt_to_segments(payload: Any) -> list[TranscriptSegment]:
     if (
         isinstance(payload, dict)
         and isinstance(payload.get("text"), str)
-        and not any(k in payload for k in ("segments", "chunks", "result", "results"))
+        and not any(k in payload for k in ("segments", "sentences", "chunks", "result", "results"))
     ):
         text = payload["text"].strip()
         if text:
@@ -378,6 +382,82 @@ def stt_to_segments(payload: Any) -> list[TranscriptSegment]:
         "Не удалось разобрать ответ распознавания: не найдено ни списка реплик, "
         "ни alternatives. Передайте ответ сервиса целиком, без ручной обработки."
     )
+
+
+# Text fallback is not acoustic diarization. Only explicit labels determine a
+# new speaker; unlabeled paragraphs retain their provider-supplied speaker.
+_ROLE_LABEL = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*(?P<role>заказчик|разработчик|специалист|клиент|"
+    r"менеджер|пользователь|говорящий\s+\d+|speaker[_ -]?\d+)[ \t]*[:,][ \t]*",
+    re.IGNORECASE,
+)
+
+
+def _text_parts(text: str) -> list[str]:
+    """Break a monolithic paragraph into readable chunks without dropping words."""
+    if len(text) <= 450:
+        return [text]
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", text)
+    parts: list[str] = []
+    current = ""
+    for sentence in sentences:
+        for word in sentence.split():
+            if current and len(current) + len(word) + 1 > 350:
+                parts.append(current)
+                current = ""
+            current = f"{current} {word}".strip()
+        if len(current) >= 200:
+            parts.append(current)
+            current = ""
+    if current:
+        parts.append(current)
+    return parts
+
+
+def split_transcript_turns(segments: list[TranscriptSegment]) -> list[TranscriptSegment]:
+    result: list[TranscriptSegment] = []
+    for segment in segments:
+        text = segment.text.strip()
+        markers = list(_ROLE_LABEL.finditer(text))
+        # Require multiple differently labelled turns: a single mention may
+        # address somebody rather than identify the speaker.
+        labelled = len({m.group("role").casefold() for m in markers}) >= 2
+        turns: list[tuple[str, str | None]] = []
+        if labelled:
+            prefix = text[:markers[0].start()].strip()
+            if prefix:
+                turns.append((prefix, segment.speaker))
+            for i, marker in enumerate(markers):
+                stop = markers[i + 1].start() if i + 1 < len(markers) else len(text)
+                body = text[marker.end():stop].strip()
+                if body:
+                    turns.append((body, _speaker_of(marker.group("role").capitalize())))
+        else:
+            turns = [(text, segment.speaker)]
+        pieces = [(part, speaker) for body, speaker in turns for part in _text_parts(body)]
+        if len(pieces) <= 1:
+            result.append(segment.model_copy(update={"id": len(result)}))
+            continue
+        # Interpolate ONLY inside the known parent interval; mark these times
+        # as approximate throughout the API and UI. No audio alignment claimed.
+        duration = max(0.0, segment.end - segment.start)
+        if not duration:
+            duration = max(len(text) / SPEECH_CHARS_PER_SEC, MIN_SEGMENT_SEC)
+        total = sum(len(part) for part, _ in pieces)
+        offset = 0
+        for part, speaker in pieces:
+            start = segment.start + duration * offset / total
+            offset += len(part)
+            end = segment.start + duration * offset / total
+            result.append(TranscriptSegment(
+                id=len(result), start=round(start, 3), end=round(end, 3),
+                text=part, speaker=speaker, timing_estimated=True,
+            ))
+    return result
+
+
+def stt_to_segments(payload: Any) -> list[TranscriptSegment]:
+    return split_transcript_turns(_parse_stt_payload(payload))
 
 
 # Прежнее имя — чтобы не ломать то, что уже написано под SpeechKit.

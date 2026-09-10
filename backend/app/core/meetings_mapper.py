@@ -82,6 +82,7 @@ def to_transcript(segments: list[TranscriptSegment]) -> list[TranscriptLine]:
         TranscriptLine(
             id=line_id(s.id),
             speaker=s.speaker or "Участник",
+            timing_estimated=s.timing_estimated,
             start=s.start,
             text=s.text,
         )

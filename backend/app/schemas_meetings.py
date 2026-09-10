@@ -27,6 +27,7 @@ MeetingStatus = Literal["processing", "ready", "failed"]
 class TranscriptLine(BaseModel):
     """Реплика расшифровки. Все четыре поля обязательны по контракту."""
 
+    timing_estimated: bool = False
     id: str = Field(..., description="Уникален внутри встречи, например «s12»")
     speaker: str = Field(..., description="Кто говорит; пустым быть не должен")
     start: float = Field(..., ge=0, description="Секунды от начала записи, не строка")

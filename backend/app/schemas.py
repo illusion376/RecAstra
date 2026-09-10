@@ -105,6 +105,7 @@ class TranscriptSegment(BaseModel):
     start: float = Field(..., ge=0, description="Начало, секунды")
     end: float = Field(..., ge=0, description="Конец, секунды")
     text: str = Field(..., description="Расшифрованный текст сегмента")
+    timing_estimated: bool = False
     speaker: Optional[str] = Field(
         None,
         description="Метка спикера, если есть диаризация (например 'SPEAKER_00'). "

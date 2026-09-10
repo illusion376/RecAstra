@@ -1,4 +1,4 @@
-export type Segment = { id: string; speaker: string; start: number; text: string };
+export type Segment = { timing_estimated?: boolean; id: string; speaker: string; start: number; text: string };
 export type Requirement = { role?: string; needs_clarification?: boolean; id: string; title: string; description: string; category: 'functional' | 'nonfunctional'; source: number | null };
 export type Question = { needs_clarification?: boolean; constraint_index?: number; id: string; text: string; source: number | null; resolved: boolean };
 const SUPPORTED_ANALYSIS_SECTIONS = [
@@ -43,7 +43,7 @@ export function specification(meeting: Meeting) {
     ...ANALYSIS_SECTIONS.map(section => `## ${section.title}\n\n` + (items.filter(item => item.kind === section.key).map((item, i) => {
       const title = item.kind === 'questions' ? `- [${item.resolved ? 'x' : ' '}] ${item.title}` : `${i + 1}. **${item.title}**`;
       return title + (item.description ? `\n   ${item.description}` : '')
-        + (item.role ? `\n   Роль: ${item.role}` : '')
+        + (item.role ? `\n   Роль: ${participantLabel(item.role)}` : '')
         + (item.needs_clarification ? '\n   Требуется уточнение' : '')
         + (item.source !== null ? `\n   Источник: ${time(item.source)}` : '');
     }).join('\n\n') || 'Не указаны.'))].join('\n\n');
@@ -76,4 +76,11 @@ export function parseMeeting(value: unknown): Meeting {
     if (new Set(m.analysis.map(item => item.id)).size !== m.analysis.length) return fail();
   }
   return { ...m, requirements, questions, constraints } as Meeting;
+}
+
+export function participantLabel(value: string): string {
+  const name = value.trim().toLocaleLowerCase('ru');
+  if (['специалист', 'технический специалист', 'разработчик', 'менеджер'].includes(name)) return 'Менеджер';
+  if (['клиент', 'заказчик'].includes(name)) return 'Заказчик';
+  return value;
 }

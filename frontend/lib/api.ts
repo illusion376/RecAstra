@@ -38,3 +38,19 @@ export async function uploadMeeting(file: File, title: string, signal?: AbortSig
 
   return normalize(await request('/meetings', { method: 'POST', body, signal }));
 }
+
+export type ExportedDocument = { id: string; meeting_id: string; title: string; content: string; created_at: string };
+function parseDocument(value: unknown): ExportedDocument {
+  if (!value || typeof value !== 'object') throw new Error('Некорректный документ от сервера.');
+  const d = value as Record<string, unknown>;
+  if (!['id', 'meeting_id', 'title', 'content', 'created_at'].every(key => typeof d[key] === 'string')) throw new Error('Некорректный документ от сервера.');
+  return d as ExportedDocument;
+}
+export async function listDocuments(signal?: AbortSignal): Promise<ExportedDocument[]> {
+  const value = await request('/documents', { signal });
+  if (!Array.isArray(value)) throw new Error('Некорректный список документов от сервера.');
+  return value.map(parseDocument);
+}
+export async function saveDocument(document: Omit<ExportedDocument, 'created_at'>): Promise<ExportedDocument> {
+  return parseDocument(await request('/documents', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(document) }));
+}

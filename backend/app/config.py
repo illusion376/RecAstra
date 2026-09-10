@@ -125,7 +125,7 @@ class Settings(BaseSettings):
         "число ошибок на границах реплик. 0 — определять автоматически.",
     )
     nexara_roles: str = Field(
-        "Заказчик,Специалист",
+        "Заказчик,Менеджер",
         description="Роли говорящих через запятую. Nexara размечает реплики "
         "сразу ими вместо обезличенных speaker_0 — это снимает отдельный шаг "
         "«кто из них заказчик». Пусто — оставить обезличенные метки.",
@@ -136,6 +136,7 @@ class Settings(BaseSettings):
     transcript_language: str = Field(
         "ru", description="Язык записи. Пусто — определять автоматически."
     )
+    documents_dir: str = "documents"
     media_dir: str = Field("media", description="Куда складывать загруженные записи")
     max_upload_mb: int = Field(
         200, ge=1, description="Потолок размера записи, мегабайты (как на фронте)"

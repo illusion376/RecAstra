@@ -54,23 +54,29 @@ def _segments_to_dicts(result: Any) -> list[dict]:
     там оказывается не «speaker_0», а сразу роль — «Заказчик». Забираем
     через getattr, потому что набор полей зависит от режима.
     """
-    raw = getattr(result, "segments", None) or getattr(result, "sentences", None)
+    def value(obj: Any, key: str, default: Any = None) -> Any:
+        return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+    # Some SDK responses expose one aggregate segment but many timed sentences.
+    segments = value(result, "segments") or []
+    sentences = value(result, "sentences") or []
+    raw = sentences if len(segments) <= 1 and len(sentences) > 1 else segments or sentences
     if not raw:
+        text = value(result, "text")
+        if text:
+            return [{"text": text, "start": 0, "end": value(result, "duration")}]
         raise TranscriptionUnavailable("Nexara вернула ответ без сегментов")
 
     out: list[dict] = []
-    for s in raw:
-        text = (getattr(s, "text", "") or "").strip()
-        if not text:
-            continue
-        out.append(
-            {
-                "start": getattr(s, "start", None),
-                "end": getattr(s, "end", None),
-                "speaker": getattr(s, "speaker", None),
-                "text": text,
-            }
-        )
+    for segment in raw:
+        # Keep time/speaker aliases instead of discarding SDK fields such as time.
+        row = {key: value(segment, key) for key in (
+            "text", "start", "end", "time", "startTime", "endTime",
+            "start_time", "end_time", "startTimeMs", "endTimeMs",
+            "speaker", "speaker_id", "speakerTag", "channelTag",
+        ) if value(segment, key) is not None}
+        if str(row.get("text") or "").strip():
+            out.append(row)
     return out
 
 

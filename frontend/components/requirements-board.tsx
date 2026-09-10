@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Icon } from './icon';
-import { ANALYSIS_SECTIONS, analysisItems, time } from '@/lib/meeting';
+import { ANALYSIS_SECTIONS, analysisItems, time, participantLabel } from '@/lib/meeting';
 import type { AnalysisItem, AnalysisKind, Meeting } from '@/lib/meeting';
 
 type Props = {
@@ -15,7 +15,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
   const editor = useRef<HTMLDialogElement>(null);
   const [editing, setEditing] = useState<AnalysisItem | null>(null);
   const [kind, setKind] = useState<AnalysisKind>('functional');
-  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>({});
+  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>(() => Object.fromEntries(ANALYSIS_SECTIONS.map(section => [section.key, true])));
   const [version, setVersion] = useState(0);
   const [formError, setFormError] = useState('');
   const [deleted, setDeleted] = useState<{item: AnalysisItem; index: number} | null>(null);
@@ -69,6 +69,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
                 onClick={() => setCollapsed(current => ({ ...current, [section.key]: !current[section.key] }))}>
                 <span className="analysis-section-icon"><Icon name={section.icon} size={19}/></span>
                 <span>{section.title}</span>
+                <span className="analysis-item-count" aria-label={`Элементов: ${rows.length}`}>{rows.length}</span>
                 <Icon name="chevron" size={17} style={{ transform: collapsed[section.key] ? 'rotate(0deg)' : 'rotate(90deg)' }}/>
               </button>
             </h3>
@@ -81,7 +82,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
                 <button disabled={!editable} title="Редактировать" aria-label={`Редактировать: ${item.title}`} onClick={() => edit(section.key, item)}><Icon name="edit" size={16}/></button>
                 <button disabled={!editable} className="delete-card" title="Удалить" aria-label={`Удалить: ${item.title}`} onClick={() => remove(item)}><Icon name="trash" size={16}/></button>
               </div></div>
-              {item.role && <span className="analysis-role">{item.role}</span>}
+              {item.role && <span className="analysis-role">{participantLabel(item.role)}</span>}
               {item.description && <p className="analysis-description">{item.description}</p>}
               <div className="analysis-card-footer">
                 {item.source !== null && <button className="board-source" onClick={() => onSource(item.source!)}><Icon name="clock" size={14}/>{time(item.source)}</button>}
@@ -102,7 +103,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
       <div className="modal-heading"><div><span className="eyebrow">{ANALYSIS_SECTIONS.find(section => section.key === kind)?.title}</span><h2>{editing ? 'Редактировать пункт' : 'Новый пункт'}</h2></div><button type="button" className="icon-button" aria-label="Закрыть окно" onClick={() => editor.current?.close()}><Icon name="close"/></button></div>
       <label className="form-field">Название или формулировка<input autoFocus name="title" required maxLength={1000} defaultValue={editing?.title}/></label>
       <label className="form-field">Описание<textarea name="description" rows={4} maxLength={10000} defaultValue={editing?.description} placeholder="Подробности, условия или последовательность действий"/></label>
-      <label className="form-field">Роль или участник <span className="optional-label">необязательно</span><input name="role" maxLength={100} defaultValue={editing?.role} placeholder="Например, пользователь или заказчик"/></label>
+      <label className="form-field">Роль или участник <span className="optional-label">необязательно</span><input name="role" maxLength={100} defaultValue={editing?.role} placeholder="Менеджер или заказчик"/></label>
       <label className="question-resolve"><input type="checkbox" name="clarification" defaultChecked={editing?.needs_clarification}/>Требует уточнения</label>
       {formError && <p className="field-error" role="alert">{formError}</p>}
       <p className="form-hint">Правки действуют в текущей сессии и включаются в экспорт ТЗ.</p>

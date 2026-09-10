@@ -29,3 +29,5 @@ node_modules/
 # Мусор macOS из присланных архивов
 .DS_Store
 __MACOSX/
+
+backend/documents/
