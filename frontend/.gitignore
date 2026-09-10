@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Public configuration template
+!.env.example
+
+# Local Sites execution files
+.sites-runtime/
