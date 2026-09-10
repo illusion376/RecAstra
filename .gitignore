@@ -1,0 +1,31 @@
+# Общий для репозитория. У frontend/ есть свой — он дополняет этот.
+
+# --- Секреты ---
+# Ключи API. Появился после переноса фронта в frontend/: прежний корневой
+# .gitignore уехал вместе с ним, и backend/.env остался без защиты.
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# --- Бэкенд на Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Загруженные записи встреч
+backend/media/
+backend/media_test/
+
+# --- Общее ---
+node_modules/
+.idea/
+*.log
+
+# Мусор macOS из присланных архивов
+.DS_Store
+__MACOSX/
