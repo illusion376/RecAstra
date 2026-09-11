@@ -17,14 +17,15 @@ import asyncio
 import logging
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Literal
+from pydantic import BaseModel
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response, StreamingResponse
 
 from app.config import Settings, get_settings
-from app.core.meetings_mapper import card_to_item, to_meeting
+from app.core.meetings_mapper import card_to_item, to_meeting, line_id
 from app.core.pipeline import AnalysisPipeline
 from app.core.stt import stt_to_segments
 from app.core.transcribe import (
@@ -115,6 +116,36 @@ async def get_meeting(
 ) -> Meeting:
     analysis = await _require(meeting_id, storage)
     return await _build_meeting(analysis, storage, settings)
+
+
+class SpeakerCorrection(BaseModel):
+    speaker: Literal["Заказчик", "Менеджер", "Участник"]
+
+
+@router.patch("/meetings/{meeting_id}/transcript/{segment_id}/speaker", response_model=Meeting)
+async def correct_speaker(meeting_id: str, segment_id: str, body: SpeakerCorrection,
+                          storage: Storage = Depends(get_storage), settings: Settings = Depends(get_settings)):
+    analysis = await _require(meeting_id, storage)
+    if analysis.status in (JobStatus.PENDING, JobStatus.RUNNING):
+        raise HTTPException(409, "Дождитесь завершения обработки")
+    segments = await storage.get_segments(meeting_id)
+    if not any(line_id(segment.id) == segment_id for segment in segments):
+        raise HTTPException(404, "Реплика не найдена")
+    await storage.save_segments(meeting_id, [segment.model_copy(update={"speaker": body.speaker})
+        if line_id(segment.id) == segment_id else segment for segment in segments])
+    return await _build_meeting(analysis, storage, settings)
+
+
+@router.delete("/meetings/{meeting_id}")
+async def delete_meeting(meeting_id: str, storage: Storage = Depends(get_storage),
+                         settings: Settings = Depends(get_settings)):
+    analysis = await _require(meeting_id, storage)
+    # Use the stored ID, never a user-supplied filesystem pattern.
+    audio = _audio_path(analysis.id, settings)
+    if audio:
+        audio.unlink(missing_ok=True)
+    await storage.delete_analysis(analysis.id)
+    return {"id": analysis.id, "deleted": True}
 
 
 # ---------------------------------------------------------------------------

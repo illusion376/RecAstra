@@ -15,7 +15,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
   const editor = useRef<HTMLDialogElement>(null);
   const [editing, setEditing] = useState<AnalysisItem | null>(null);
   const [kind, setKind] = useState<AnalysisKind>('functional');
-  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>({});
+  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>(() => Object.fromEntries(ANALYSIS_SECTIONS.map(section => [section.key, true])));
   const [version, setVersion] = useState(0);
   const [formError, setFormError] = useState('');
   const [deleted, setDeleted] = useState<{item: AnalysisItem; index: number} | null>(null);
@@ -109,7 +109,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
       <label className="form-field">Приоритет<select name="priority" defaultValue={editing?.priority ?? ''}><option value="">Не определён</option>{Object.entries(PRIORITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="question-resolve"><input type="checkbox" name="clarification" defaultChecked={editing?.needs_clarification}/>Требует уточнения</label>
       {formError && <p className="field-error" role="alert">{formError}</p>}
-      <p className="form-hint">Правки действуют в текущей сессии и включаются в экспорт ТЗ.</p>
+      <p className="form-hint">После редактирования нажмите «Сохранить» в проекте. Правки также включаются в экспорт ТЗ.</p>
       <div className="modal-actions"><button type="button" className="button secondary" onClick={() => editor.current?.close()}>Отмена</button><button className="button primary">Сохранить</button></div>
     </form></dialog>
   </div>;

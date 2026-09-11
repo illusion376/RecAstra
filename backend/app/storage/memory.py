@@ -50,7 +50,8 @@ class MemoryStorage(Storage):
 
     async def save_analysis(self, analysis: Analysis) -> Analysis:
         async with self._lock:
-            self._analyses[analysis.id] = analysis
+            if analysis.id in self._analyses:
+                self._analyses[analysis.id] = analysis
         return analysis
 
     async def list_analyses(self, limit: int = 50) -> list[Analysis]:
@@ -72,7 +73,8 @@ class MemoryStorage(Storage):
         self, analysis_id: str, segments: list[TranscriptSegment]
     ) -> None:
         async with self._lock:
-            self._segments[analysis_id] = segments
+            if analysis_id in self._analyses:
+                self._segments[analysis_id] = segments
 
     async def get_segments(self, analysis_id: str) -> list[TranscriptSegment]:
         return self._segments.get(analysis_id, [])
@@ -81,7 +83,8 @@ class MemoryStorage(Storage):
 
     async def replace_items(self, analysis_id: str, items: list[Item]) -> None:
         async with self._lock:
-            self._items[analysis_id] = {i.id: i for i in items}
+            if analysis_id in self._analyses:
+                self._items[analysis_id] = {i.id: i for i in items}
 
     async def add_item(self, item: Item) -> Item:
         async with self._lock:

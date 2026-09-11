@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AuthScreen } from '@/components/auth-screen';
 import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
-import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, deleteDocument, saveAnalysis, ExportedDocument } from '@/lib/api';
+import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, deleteMeeting, correctSpeaker, saveDocument, deleteDocument, saveAnalysis, ExportedDocument } from '@/lib/api';
 import { demoMeeting } from '@/lib/demo';
 import { Meeting, analysisItems, specification, time, participantLabel } from '@/lib/meeting';
 import { User, clearSession, getSession, subscribeSession } from '@/lib/session';
@@ -25,6 +25,8 @@ function Workspace({ user }: { user: User | null }) {
   const [documents, setDocuments] = useState<ExportedDocument[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState('');
+  const [deletingProject, setDeletingProject] = useState<string | null>(null);
+  const [correctingSpeaker, setCorrectingSpeaker] = useState(false);
   const [deletingDocument, setDeletingDocument] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<ExportedDocument | null>(null);
@@ -163,6 +165,28 @@ function Workspace({ user }: { user: User | null }) {
     if (!next.size || next.size > 200 * 1024 * 1024) { setUploadError('Выберите непустой файл размером до 200 МБ.'); return; }
     setFile(next);
   }
+  async function removeProject(project: Meeting) {
+    if (deletingProject || !window.confirm(`Удалить проект «${project.title}» и его запись? Экспортированные документы сохранятся.`)) return;
+    setDeletingProject(project.id); setError('');
+    try {
+      if (!DEMO_MODE) await deleteMeeting(project.id);
+      initialController.current?.abort();
+      setMeetings(rows => rows.filter(row => row.id !== project.id));
+      if (selected === project.id) { setSelected(''); setRevisions(current => {const next = {...current}; delete next[project.id]; return next;}); setView('projects'); }
+    } catch (error) { setError(error instanceof Error ? error.message : 'Не удалось удалить проект.'); }
+    finally { setDeletingProject(null); }
+  }
+  async function changeSpeaker(segmentId: string, label: string) {
+    if (!meeting || correctingSpeaker) return;
+    setCorrectingSpeaker(true); setError('');
+    const id = meeting.id;
+    try {
+      if (!DEMO_MODE) await correctSpeaker(id, segmentId, label);
+      setMeetings(rows => rows.map(row => row.id === id ? {...row, transcript: row.transcript.map(segment => segment.id === segmentId ? {...segment, speaker: label} : segment)} : row));
+      setSpeaker('all');
+    } catch (error) { setError(error instanceof Error ? error.message : 'Не удалось изменить роль.'); }
+    finally { setCorrectingSpeaker(false); }
+  }
   async function removeDocument(document: ExportedDocument) {
     if (deletingDocument || !window.confirm(`Удалить документ «${document.title}»?`)) return;
     setDeletingDocument(document.id); setDocumentsError('');
@@ -206,7 +230,7 @@ function Workspace({ user }: { user: User | null }) {
       <div className="sidebar-bottom"><div className="workspace-person"><span className="avatar">{initial}</span><div><b>{user?.name ?? 'Моё пространство'}</b><small>{user?.email ?? (DEMO_MODE ? 'Демонстрационный проект' : 'Рабочие встречи')}</small></div></div></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumbs"><button onClick={() => setView('projects')}>Проекты</button><Icon name="chevron" size={14}/><span>{view === 'workspace' ? 'Встреча с заказчиком' : view === 'documents' ? 'Документы' : 'Все проекты'}</span></div><div className="topbar-right"><span className={`mode-badge ${DEMO_MODE ? '' : 'live'}`}>{DEMO_MODE ? 'Деморежим' : 'FastAPI'}</span><span className="avatar small" title={user ? `${user.name} · ${user.email}` : undefined}>{initial}</span>{user && <button className="icon-button logout-button" onClick={logout} title="Выйти" aria-label="Выйти из аккаунта"><Icon name="logout" size={19}/></button>}</div></header>
+      <header className="topbar"><div className="breadcrumbs"><button onClick={() => setView('projects')}>Проекты</button><Icon name="chevron" size={14}/><span>{view === 'workspace' ? 'Встреча с заказчиком' : view === 'documents' ? 'Документы' : 'Все проекты'}</span></div><div className="topbar-right">{DEMO_MODE && <span className="mode-badge">Деморежим</span>}<span className="avatar small" title={user ? `${user.name} · ${user.email}` : undefined}>{initial}</span>{user && <button className="icon-button logout-button" onClick={logout} title="Выйти" aria-label="Выйти из аккаунта"><Icon name="logout" size={19}/></button>}</div></header>
       <main>
         {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => { if (!dirty || window.confirm('Обновление заменит несохранённые правки данными сервера. Продолжить?')) { setRevisions({}); void refresh(); } }}>Повторить</button></div>}
         {view === 'documents' ? <>
@@ -218,7 +242,7 @@ function Workspace({ user }: { user: User | null }) {
         </> : loading ? <div className="empty-state" role="status"><span className="spinner"/><h1>Загружаем встречи</h1><p>Получаем данные с сервера…</p></div> : view !== 'workspace' ? <>
           <div className="page-heading"><div><div className="eyebrow">ВАШЕ РАБОЧЕЕ ПРОСТРАНСТВО</div><h1>Проекты</h1><p>Разговоры менеджера и заказчика, из которых рождаются продукты.</p></div><button className="button primary" onClick={() => uploadDialog.current?.showModal()}><Icon name="plus"/>Новая встреча</button></div>
           <label className="search list-search"><Icon name="search" size={18}/><input aria-label="Поиск проектов" placeholder="Найти проект…" value={globalQuery} onChange={e => setGlobalQuery(e.target.value)}/></label>
-          <div className="project-grid">{filteredMeetings.map(m => <button className="project-card" key={m.id} onClick={() => { openMeeting(m); }}><span className="tile-icon"><Icon name="folder" size={25}/></span><span className="card-state">{m.status === 'ready' ? 'Готово к работе' : m.status === 'processing' ? 'Обрабатывается' : 'Ошибка обработки'}</span><h2>{m.title}</h2><p>{m.filename}</p><div className="project-meta"><span><Icon name="clock" size={16}/>{time(m.duration)}</span><span>{analysisItems(m).length} пунктов</span><Icon name="chevron" size={16}/></div></button>)}</div>
+          <div className="project-grid">{filteredMeetings.map(m => <article className="project-card" key={m.id}><button className="project-open" onClick={() => openMeeting(m)}><span className="tile-icon"><Icon name="folder" size={25}/></span><span className="card-state">{m.status === 'ready' ? 'Готово к работе' : m.status === 'processing' ? 'Обрабатывается' : 'Ошибка обработки'}</span><h2>{m.title}</h2><p>{m.filename}</p><div className="project-meta"><span><Icon name="clock" size={16}/>{time(m.duration)}</span><span>{analysisItems(m).length} пунктов</span><Icon name="chevron" size={16}/></div></button><button className="button secondary" disabled={deletingProject !== null} onClick={() => void removeProject(m)}><Icon name="trash" size={16}/>{deletingProject === m.id ? 'Удаляем…' : 'Удалить проект'}</button></article>)}</div>
           {!filteredMeetings.length && <div className="empty-state"><Icon name="folder" size={36}/><h2>{globalQuery ? 'Ничего не найдено' : 'Пока нет встреч'}</h2><p>{globalQuery ? 'Попробуйте другое название.' : 'Загрузите первую запись разговора с заказчиком.'}</p></div>}
         </> : !meeting ? <div className="empty-state"><Icon name="upload" size={40}/><h1>Начните с новой встречи</h1><p>Загрузите запись, чтобы получить расшифровку с сервера.</p><button className="button primary" onClick={() => uploadDialog.current?.showModal()}>Загрузить запись</button></div> : <>
           <div className="page-heading"><div><div className="eyebrow"><span className="project-dot"/>ПРОЕКТ · {DEMO_MODE ? 'ПРИМЕР' : 'ВСТРЕЧА'}</div><h1>{meeting.title}</h1><p className="meeting-meta">Встреча с заказчиком<span>·</span>{Math.ceil(meeting.duration / 60)} мин<span>·</span>{Number.isNaN(Date.parse(meeting.date)) ? meeting.date : new Date(meeting.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' })}</p></div><div className="heading-actions"><button className="button secondary" onClick={() => uploadDialog.current?.showModal()}><Icon name="upload" size={18}/>Загрузить запись</button>{!DEMO_MODE && <button className="button secondary" onClick={save} disabled={!revisions[meeting.id] || saving || meeting.status !== 'ready'}><Icon name="check" size={18}/>{saving ? 'Сохраняем…' : revisions[meeting.id] ? 'Сохранить' : 'Сохранено'}</button>}<button className="button primary" onClick={download} disabled={meeting.status !== 'ready' || exporting}><Icon name="download" size={18}/>{exporting ? 'Сохраняем…' : 'Экспорт ТЗ'}</button></div></div>
@@ -227,7 +251,7 @@ function Workspace({ user }: { user: User | null }) {
           <div className="workspace-grid"><section className="panel recording"><div className="panel-heading"><h2>Запись встречи</h2><span className="label-muted">АУДИО</span></div><div className="audio-file"><span className="file-icon"><Icon name="file" size={24}/></span><div><b>{meeting.filename || 'Запись встречи'}</b><small>{time(meeting.duration)}{DEMO_MODE ? ' · Демонстрационная запись' : ''}</small></div></div>
             {meeting.audio_url ? <><audio key={meeting.audio_url} ref={audio} controls preload="metadata" src={meeting.audio_url} onTimeUpdate={e => setAudioTime(e.currentTarget.currentTime)} onError={() => setAudioFailed(true)} aria-label="Аудиозапись встречи"/>{audioFailed && <p className="field-error" role="alert">Не удалось воспроизвести запись. Проверьте доступность аудиофайла на сервере.</p>}</> : <div className="audio-placeholder"><span className="muted-play"><Icon name="play"/></span><div className="waveform" aria-hidden="true">{Array.from({length: 62}, (_, i) => <i key={i} style={{height: `${7 + ((i * 19 + i * i * 7) % 33)}px`}}/>)}</div><span className="audio-note">Аудио недоступно{DEMO_MODE ? ' в деморежиме' : ''}</span></div>}
             <div className="transcript-heading"><h2>Расшифровка</h2><span className="count-badge">{meeting.transcript.length} реплик</span></div><div className="transcript-filters"><label className="search"><Icon name="search" size={17}/><input placeholder="Поиск по расшифровке…" aria-label="Поиск по расшифровке" value={query} onChange={e => setQuery(e.target.value)}/>{query && <button aria-label="Очистить поиск" onClick={() => setQuery('')}><Icon name="close" size={14}/></button>}</label><select aria-label="Фильтр по участнику" value={speaker} onChange={e => setSpeaker(e.target.value)}><option value="all">Все участники</option>{speakers.map(s => <option key={s}>{s}</option>)}</select></div>
-            <div className="transcript-list">{segments.map(s => <button key={s.id} id={`source-${s.start}`} className={`transcript-row ${activeSource === s.start ? 'active' : ''}`} onClick={() => jump(s.start)}><span className={`speaker-avatar ${speakers.indexOf(s.speaker) % 2 ? 'mint' : ''}`}>{s.speaker.slice(0, 1)}</span><span className="utterance"><span className="utterance-meta"><b>{s.speaker}</b><span>·</span><time title={s.timing_estimated ? "Время оценено по тексту, не по аудио" : undefined}>{s.timing_estimated ? "≈ " : ""}{time(s.start)}</time>{s.timing_estimated && <span title="Границы выделены по тексту, время приблизительное">Разбито по тексту</span>}</span><span className="utterance-text">{s.text}</span></span></button>)}{!segments.length && <div className="inline-empty">{meeting.transcript.length ? 'Реплики не найдены. Измените поиск или фильтр.' : meeting.status === 'processing' ? 'Ожидаем расшифровку…' : 'Сервер ещё не передал расшифровку.'}</div>}</div>
+            <div className="transcript-list">{segments.map(s => <div key={s.id} id={`source-${s.start}`} className={`transcript-row ${activeSource === s.start ? 'active' : ''}`} onClick={() => jump(s.start)}><span className={`speaker-avatar ${speakers.indexOf(s.speaker) % 2 ? 'mint' : ''}`}>{s.speaker.slice(0, 1)}</span><span className="utterance"><span className="utterance-meta"><select aria-label="Роль в реплике" value={s.speaker} disabled={correctingSpeaker || meeting.status === 'processing'} onClick={e => e.stopPropagation()} onChange={e => void changeSpeaker(s.id, e.target.value)}>{!['Заказчик', 'Менеджер', 'Участник'].includes(s.speaker) && <option value={s.speaker}>{s.speaker}</option>}<option>Заказчик</option><option>Менеджер</option><option>Участник</option></select><button className="board-source" aria-label="Перейти к реплике" onClick={e => {e.stopPropagation(); jump(s.start);}}><Icon name="play" size={14}/></button><span>·</span><time title={s.timing_estimated ? "Время оценено по тексту, не по аудио" : undefined}>{s.timing_estimated ? "≈ " : ""}{time(s.start)}</time>{s.timing_estimated && <span title="Границы выделены по тексту, время приблизительное">Разбито по тексту</span>}</span><span className="utterance-text">{s.text}</span></span></div>)}{!segments.length && <div className="inline-empty">{meeting.transcript.length ? 'Реплики не найдены. Измените поиск или фильтр.' : meeting.status === 'processing' ? 'Ожидаем расшифровку…' : 'Сервер ещё не передал расшифровку.'}</div>}</div>
             <div className="transcript-footer"><Icon name="clock" size={14}/>{meeting.audio_url ? `Позиция воспроизведения: ${time(audioTime)}` : 'Нажмите на источник, чтобы найти реплику'}</div>
           </section>
           <div className="right-column"><section className="panel requirements-panel"><header className="analysis-panel-title"><Icon name="list" size={19}/><h2>Анализ разговора</h2></header>

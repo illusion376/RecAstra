@@ -60,7 +60,13 @@ def _segments_to_dicts(result: Any) -> list[dict]:
     # Some SDK responses expose one aggregate segment but many timed sentences.
     segments = value(result, "segments") or []
     sentences = value(result, "sentences") or []
-    raw = sentences if len(segments) <= 1 and len(sentences) > 1 else segments or sentences
+    # Sentence timestamps are useful only if choosing them does not drop diarization.
+    speaker_fields = ("speaker", "speaker_id", "speakerTag", "channelTag")
+    has_speaker = lambda row: any(value(row, key) not in (None, "") for key in speaker_fields)
+    prefer_sentences = len(segments) <= 1 and len(sentences) > 1
+    if prefer_sentences and segments and has_speaker(segments[0]):
+        prefer_sentences = all(has_speaker(row) for row in sentences)
+    raw = sentences if prefer_sentences else segments or sentences
     if not raw:
         text = value(result, "text")
         if text:
@@ -110,10 +116,22 @@ def _nexara_sync(path: Path, settings: Settings, with_roles: bool) -> list[dict]
     if with_roles and settings.nexara_roles:
         # Размечает реплики сразу ролями, а не обезличенными speaker_0.
         # Это снимает отдельный проход «кто из них заказчик».
-        kwargs["roles"] = [r.strip() for r in settings.nexara_roles.split(",") if r.strip()]
+        roles = [r.strip() for r in settings.nexara_roles.split(",") if r.strip()]
+        if set(roles) == {"Заказчик", "Менеджер"}:
+            kwargs["roles"] = {
+                "Заказчик": "Заказывает продукт: описывает свою бизнес-задачу, потребности и пожелания, согласует результат.",
+                "Менеджер": "Представляет команду исполнителя: выясняет требования заказчика, уточняет детали, обсуждает реализацию, сроки и стоимость.",
+            }
+        else:
+            kwargs["roles"] = roles
 
     result = client.transcriptions.create(**kwargs)
-    return _segments_to_dicts(result)
+    rows = _segments_to_dicts(result)
+    log.info("Nexara: task=%s, roles_requested=%s, segments=%d, missing_speaker=%d",
+             settings.nexara_task, bool(with_roles and settings.nexara_roles), len(rows),
+             sum(not any(row.get(key) not in (None, "") for key in
+                         ("speaker", "speaker_id", "speakerTag", "channelTag")) for row in rows))
+    return rows
 
 
 async def transcribe_file(path: Path, settings: Settings) -> list[TranscriptSegment]:

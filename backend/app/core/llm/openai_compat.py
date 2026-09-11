@@ -108,6 +108,7 @@ class OpenAICompatProvider(LLMProvider):
         last_error: Exception | None = None
 
         for attempt in range(1, self._s.llm_max_retries + 1):
+            received_response = False
             try:
                 async with self._sem:
                     resp = await self._client.post("/chat/completions", json=payload)
@@ -117,7 +118,9 @@ class OpenAICompatProvider(LLMProvider):
                         f"HTTP {resp.status_code}: проверьте LLM_API_KEY и права. "
                         f"{resp.text[:200]}"
                     )
-                if resp.status_code == 429 or resp.status_code >= 500:
+                if resp.status_code >= 500:
+                    raise LLMFatalError(f"HTTP {resp.status_code}: результат обработки неизвестен. Автоповтор отключён, чтобы не дублировать возможное списание.")
+                if resp.status_code == 429:
                     raise LLMError(f"HTTP {resp.status_code}: {resp.text[:300]}")
                 if resp.status_code >= 400:
                     # Провайдеры расходятся в мелочах, и заранее угадать нельзя.
@@ -125,19 +128,30 @@ class OpenAICompatProvider(LLMProvider):
                     # запоминается, так что цена — один запрос за весь запуск.
                     if self._adapt_payload(payload, resp.text):
                         continue
-                    raise LLMError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+                    raise LLMFatalError(f"HTTP {resp.status_code}: запрос отклонён")
 
+                received_response = True
                 data = resp.json()
                 self.calls += 1
                 usage = data.get("usage") or {}
                 self.tokens_in += int(usage.get("prompt_tokens", 0) or 0)
                 self.tokens_out += int(usage.get("completion_tokens", 0) or 0)
-                content = data["choices"][0]["message"]["content"]
+                choice = data["choices"][0]
+                if choice.get("finish_reason") in ("length", "content_filter"):
+                    raise LLMFatalError(f"Ответ не завершён: finish_reason={choice['finish_reason']}. Автоповтор отключён; проверьте лимит ответа или ограничения модели.")
+                content = choice["message"]["content"]
+                if not isinstance(content, str):
+                    raise LLMFatalError("Модель не вернула текст ответа. Автоповтор отключён.")
                 return extract_json(content)
 
             except LLMFatalError:
                 raise
-            except (httpx.HTTPError, LLMError, KeyError, IndexError) as exc:
+            except (httpx.HTTPError, LLMError, KeyError, IndexError, ValueError, TypeError, AttributeError) as exc:
+                reason = type(exc).__name__
+                safe_network_retry = isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout))
+                if received_response or (isinstance(exc, httpx.HTTPError) and not safe_network_retry):
+                    log.error("LLM: %s; response_received=%s; автоповтор отключён: запрос мог быть оплачен", reason, received_response)
+                    raise LLMFatalError(f"{reason}: ответ LLM не получен или не удалось разобрать. Запрос мог быть оплачен; автоматический повтор отключён.") from exc
                 last_error = exc
                 if attempt < self._s.llm_max_retries:
                     delay = min(2**attempt, 8)
@@ -145,12 +159,12 @@ class OpenAICompatProvider(LLMProvider):
                         "Вызов LLM не удался (попытка %s/%s): %s. Повтор через %sс",
                         attempt,
                         self._s.llm_max_retries,
-                        exc,
+                        type(exc).__name__,
                         delay,
                     )
                     await asyncio.sleep(delay)
 
-        raise LLMError(f"LLM недоступна после {self._s.llm_max_retries} попыток: {last_error}")
+        raise LLMError(f"LLM недоступна после {self._s.llm_max_retries} попыток: {type(last_error).__name__ if last_error else 'несовместимые параметры запроса'}")
 
     async def aclose(self) -> None:
         await self._client.aclose()

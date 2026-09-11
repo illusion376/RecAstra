@@ -7,6 +7,7 @@ import unittest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.deps import get_storage
+from app.config import Settings, get_settings
 from app.schemas import Analysis, TranscriptMeta
 from app.storage.memory import MemoryStorage
 from app.storage.base import DuplicateProjectTitle
@@ -27,6 +28,7 @@ class ProjectTitlesTests(unittest.IsolatedAsyncioTestCase):
         storage = MemoryStorage()
         await storage.create_analysis(Analysis(meta=TranscriptMeta(title='Проект')))
         app.dependency_overrides[get_storage] = lambda: storage
+        app.dependency_overrides[get_settings] = lambda: Settings(auth_required=False, database_path=":memory:", llm_provider="mock")
         try:
             with TestClient(app) as client:
                 response = client.post('/meetings', data={'title': ' ПРОЕКТ '}, files={'file': ('audio.mp3', b'audio', 'audio/mpeg')})

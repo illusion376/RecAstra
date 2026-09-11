@@ -388,7 +388,7 @@ def _parse_stt_payload(payload: Any) -> list[TranscriptSegment]:
 # new speaker; unlabeled paragraphs retain their provider-supplied speaker.
 _ROLE_LABEL = re.compile(
     r"(?:^|(?<=[.!?\n]))[ \t]*(?P<role>заказчик|разработчик|специалист|клиент|"
-    r"менеджер|пользователь|говорящий\s+\d+|speaker[_ -]?\d+)[ \t]*[:,][ \t]*",
+    r"менеджер|пользователь|говорящий\s+\d+|speaker[_ -]?\d+)[ \t]*:[ \t]*",
     re.IGNORECASE,
 )
 
@@ -421,7 +421,7 @@ def split_transcript_turns(segments: list[TranscriptSegment]) -> list[Transcript
         markers = list(_ROLE_LABEL.finditer(text))
         # Require multiple differently labelled turns: a single mention may
         # address somebody rather than identify the speaker.
-        labelled = len({m.group("role").casefold() for m in markers}) >= 2
+        labelled = bool(markers) and (markers[0].start() == 0 or len({m.group("role").casefold() for m in markers}) >= 2)
         turns: list[tuple[str, str | None]] = []
         if labelled:
             prefix = text[:markers[0].start()].strip()
@@ -436,7 +436,10 @@ def split_transcript_turns(segments: list[TranscriptSegment]) -> list[Transcript
             turns = [(text, segment.speaker)]
         pieces = [(part, speaker) for body, speaker in turns for part in _text_parts(body)]
         if len(pieces) <= 1:
-            result.append(segment.model_copy(update={"id": len(result)}))
+            updates = {"id": len(result)}
+            if pieces and labelled:
+                updates.update(text=pieces[0][0], speaker=pieces[0][1])
+            result.append(segment.model_copy(update=updates))
             continue
         # Interpolate ONLY inside the known parent interval; mark these times
         # as approximate throughout the API and UI. No audio alignment claimed.

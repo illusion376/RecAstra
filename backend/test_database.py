@@ -79,6 +79,25 @@ class DatabaseApiTests(unittest.TestCase):
 
     # --- проекты ------------------------------------------------------------
 
+    def test_integrated_project_actions_respect_owner_and_persist(self):
+        response = self.create_project(self.anna, 'Проверка обновления')
+        self.assertEqual(response.status_code, 202)
+        mid = response.json()['id']
+        meeting = self.wait_ready(self.anna, mid)
+        sid = meeting['transcript'][0]['id']
+        path = f'/meetings/{mid}'
+        correction = path + f'/transcript/{sid}/speaker'
+        self.assertEqual(self.client.patch(correction, headers=self.boris, json={'speaker': 'Менеджер'}).status_code, 404)
+        self.assertEqual(self.client.delete(path, headers=self.boris).status_code, 404)
+        self.assertEqual(self.client.delete(path).status_code, 401)
+        self.assertEqual(self.client.patch(correction, headers=self.anna, json={'speaker': 'Менеджер'}).status_code, 200)
+        self.restart()
+        self.assertEqual(self.client.get(path, headers=self.anna).json()['transcript'][0]['speaker'], 'Менеджер')
+        self.assertEqual(self.client.delete(path, headers=self.anna).status_code, 200)
+        self.restart()
+        self.assertEqual(self.client.get(path, headers=self.anna).status_code, 404)
+        self.assertEqual(self.count('segments', mid), 0)
+
     def test_projects_are_private_and_survive_restart(self):
         r = self.create_project(self.anna, 'Сервис онлайн-записи')
         self.assertEqual(r.status_code, 202, r.text)

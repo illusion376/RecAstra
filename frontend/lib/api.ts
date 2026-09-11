@@ -90,6 +90,15 @@ export async function deleteDocument(id: string): Promise<void> {
   await request(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+export async function deleteMeeting(id: string): Promise<void> {
+  await request(`/meetings/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+export async function correctSpeaker(meetingId: string, segmentId: string, speaker: string): Promise<Meeting> {
+  return normalize(await request(`/meetings/${encodeURIComponent(meetingId)}/transcript/${encodeURIComponent(segmentId)}/speaker`, {
+    method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({speaker}),
+  }));
+}
+
 // --- Авторизация ---------------------------------------------------------
 function parseSession(value: unknown): Session {
   const s = value as { token?: unknown; user?: Record<string, unknown> } | null;

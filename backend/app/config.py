@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.1
     llm_timeout: float = Field(120.0, description="Таймаут одного запроса, секунды")
     llm_max_retries: int = Field(
-        3, description="Повторы при сетевой ошибке или невалидном JSON"
+        3, ge=1, description="Максимум попыток при ошибке подключения, HTTP 429 или адаптации параметров. Таймаут ответа и ошибки JSON не повторяются."
     )
     llm_max_tokens: int = Field(
         4096,
