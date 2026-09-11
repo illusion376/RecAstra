@@ -7,6 +7,7 @@ const paths: Record<string, React.ReactNode> = {
  chevron: <path d="m9 5 7 7-7 7"/>, plus: <path d="M12 5v14M5 12h14"/>, check: <path d="m5 12 4 4L19 6"/>, close: <path d="m6 6 12 12M6 18 18 6"/>,
  question: <><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 5m0 3v.1"/></>, alert: <><path d="m12 3 10 18H2L12 3Z M12 9v5m0 3v.1"/></>,
  users: <><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 5"/></>, bell: <><path d="M5 16h14l-2-3V9A5 5 0 0 0 7 9v4l-2 3Zm5 4h4"/></>, clock: <><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></>,
+ logout: <path d="M9 4H5v16h4m5-12 4 4-4 4m4-4H9"/>,
  list: <path d="M8 6h13M8 12h13M8 18h13M3 6h.1M3 12h.1M3 18h.1"/>, edit: <><path d="m4 16 12-12 4 4L8 20H4v-4Zm9-9 4 4"/></>, play: <path d="m9 5 11 7-11 7V5Z"/>,
 };
 export function Icon({name, size = 20, style}: {name: string; size?: number; style?: CSSProperties}) {

@@ -1,6 +1,7 @@
 """Offline exported document persistence regression."""
 import os
 os.environ['LLM_PROVIDER'] = 'mock'
+os.environ['AUTH_REQUIRED'] = 'false'  # авторизацию проверяет test_auth.py
 import tempfile
 import unittest
 from uuid import uuid4

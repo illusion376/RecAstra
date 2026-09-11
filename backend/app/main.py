@@ -10,15 +10,16 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.routes_auth import router as auth_router
 from app.api.routes_documents import router as documents_router
 from app.api.routes import router
 from app.api.routes_meetings import router as meetings_router
 from app.config import VERSION, get_settings
-from app.deps import get_llm
+from app.deps import get_current_user, get_llm
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,6 +68,8 @@ async def lifespan(app: FastAPI):
             "Сверьтесь с .env.example",
             settings.llm_provider,
         )
+    if not settings.auth_required:
+        log.warning("AUTH_REQUIRED=false: ручки открыты без входа. Только для разработки")
     yield
     await llm.aclose()
 
@@ -77,6 +80,7 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
     openapi_tags=[
+        {"name": "авторизация", "description": "Регистрация, вход, текущий пользователь"},
         {"name": "анализ", "description": "Запуск анализа и получение результата"},
         {"name": "элементы", "description": "Проверка и правка требований (пункт 4)"},
         {"name": "источник", "description": "Связь с исходным разговором (пункт 5)"},
@@ -92,11 +96,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Регистрация и вход открыты, всё остальное — только с токеном.
+# AUTH_REQUIRED=false в .env снимает защиту (офлайн-тесты, отладка фронта).
+app.include_router(auth_router)
+_signed_in = [Depends(get_current_user)]
 # Контракт фронтенда (API.md) — то, под что уже написан lib/api.ts.
-app.include_router(meetings_router)
-app.include_router(documents_router)
+app.include_router(meetings_router, dependencies=_signed_in)
+app.include_router(documents_router, dependencies=_signed_in)
 # Внутренний API: он богаче и остаётся доступен для будущего.
-app.include_router(router)
+app.include_router(router, dependencies=_signed_in)
 
 
 from app.storage.base import DuplicateProjectTitle

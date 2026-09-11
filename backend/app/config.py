@@ -30,6 +30,24 @@ class Settings(BaseSettings):
         description="Список origin через запятую. На проде сузить до домена фронта.",
     )
 
+    # --- Авторизация ------------------------------------------------------
+    auth_required: bool = Field(
+        True,
+        description="false — ручки открыты без входа (офлайн-тесты, отладка фронта). "
+        "На защите и в проде — только true.",
+    )
+    auth_secret: str = Field(
+        "",
+        description="Секрет подписи токенов. Пусто — сгенерируется и сохранится "
+        "в .auth_secret рядом с файлом пользователей.",
+    )
+    auth_token_ttl_hours: int = Field(
+        168, ge=1, description="Сколько живёт токен входа, часы (по умолчанию неделя)"
+    )
+    users_file: str = Field(
+        "data/users.json", description="Где хранить зарегистрированных пользователей"
+    )
+
     # --- LLM --------------------------------------------------------------
     llm_provider: Literal["mock", "openai_compat", "yandex_gpt"] = Field(
         "mock",

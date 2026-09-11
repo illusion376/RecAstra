@@ -19,6 +19,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # Тест запускает анализ через API — без этого он ушёл бы в платную модель,
 # указанную в .env, и тратил бы деньги на каждом прогоне.
 os.environ["LLM_PROVIDER"] = "mock"
+os.environ["AUTH_REQUIRED"] = "false"  # авторизацию проверяет test_auth.py
 
 sys.path.insert(0, str(Path(__file__).parent))
 

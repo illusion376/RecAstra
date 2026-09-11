@@ -23,6 +23,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 os.environ["LLM_PROVIDER"] = "mock"
+os.environ["AUTH_REQUIRED"] = "false"  # авторизацию проверяет test_auth.py
 os.environ["MEDIA_DIR"] = str(Path(__file__).parent / "media_test")
 
 sys.path.insert(0, str(Path(__file__).parent))

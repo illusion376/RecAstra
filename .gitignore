@@ -31,3 +31,5 @@ node_modules/
 __MACOSX/
 
 backend/documents/
+# Пользователи и секрет подписи токенов
+backend/data/

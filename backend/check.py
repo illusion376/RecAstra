@@ -9,6 +9,7 @@
     python check.py                          # свой транскрипт из samples/
     python check.py --file мой_разговор.json # свой файл
     python check.py --url http://localhost:8000   # против запущенного сервера
+                                             # (токен — в переменной API_TOKEN)
     python check.py --show-source            # показать цитаты и таймкоды
 
 Кириллица печатается корректно: скрипт сам переключает кодировку консоли,
@@ -20,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -54,6 +56,8 @@ class LocalClient:
     """Гоняет приложение в этом же процессе — сервер поднимать не нужно."""
 
     def __init__(self) -> None:
+        # Внутри процесса вход не нужен: проверяем анализ, а не авторизацию.
+        os.environ.setdefault("AUTH_REQUIRED", "false")
         from fastapi.testclient import TestClient
 
         from app.main import app
@@ -79,7 +83,10 @@ class RemoteClient:
         import httpx
 
         self.base = base.rstrip("/")
-        self.client = httpx.Client(timeout=120.0)
+        # Токен из POST /auth/login: API_TOKEN=... python check.py --url ...
+        token = os.environ.get("API_TOKEN", "")
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        self.client = httpx.Client(timeout=120.0, headers=headers)
 
     def get(self, path: str):
         return self.client.get(self.base + path).json()

@@ -1,14 +1,24 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { AuthScreen } from '@/components/auth-screen';
 import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
 import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, deleteDocument, ExportedDocument } from '@/lib/api';
 import { demoMeeting } from '@/lib/demo';
 import { Meeting, analysisItems, specification, time, participantLabel } from '@/lib/meeting';
+import { User, clearSession, getSession, subscribeSession } from '@/lib/session';
 
 type View = 'workspace' | 'projects' | 'documents';
 export default function Home() {
+  // На сервере сессии нет (undefined) — пока браузер не прочитал её, показываем загрузку.
+  const session = useSyncExternalStore(subscribeSession, getSession, () => undefined);
+  if (DEMO_MODE) return <Workspace user={null}/>;
+  if (session === undefined) return <div className="empty-state" role="status"><span className="spinner"/><p>Загружаем…</p></div>;
+  if (!session) return <AuthScreen/>;
+  return <Workspace key={session.user.id} user={session.user}/>;
+}
+function Workspace({ user }: { user: User | null }) {
   const [meetings, setMeetings] = useState<Meeting[]>(DEMO_MODE ? [demoMeeting] : []);
   const [selected, setSelected] = useState(DEMO_MODE ? 'demo' : '');
   const [view, setView] = useState<View>('workspace');
@@ -81,6 +91,11 @@ export default function Home() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
+  function logout() {
+    if (dirty && !window.confirm('Правки, не сохранённые через экспорт ТЗ, пропадут. Выйти?')) return;
+    requestController.current?.abort(); clearSession();
+  }
+  const initial = (user?.name.trim()[0] ?? 'R').toLocaleUpperCase('ru');
   function updateMeeting(change: (m: Meeting) => Meeting) {
     setMeetings(rows => rows.map(m => m.id === selected ? change(m) : m)); setDirty(true);
   }
@@ -170,10 +185,10 @@ export default function Home() {
       <nav aria-label="Основная навигация">{([
         ['projects','folder','Проекты'], ['documents','file','Документы'],
       ] as const).map(([id, icon, label]) => <button key={id} className={(view === id || (id === 'projects' && view === 'workspace')) ? 'nav-item selected' : 'nav-item'} onClick={() => { setView(id); setGlobalQuery(''); }}><Icon name={icon}/><span>{label}</span>{id === 'projects' && <span className="nav-count">{meetings.length}</span>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="workspace-person"><span className="avatar">R</span><div><b>Моё пространство</b><small>{DEMO_MODE ? 'Демонстрационный проект' : 'Рабочие встречи'}</small></div></div></div>
+      <div className="sidebar-bottom"><div className="workspace-person"><span className="avatar">{initial}</span><div><b>{user?.name ?? 'Моё пространство'}</b><small>{user?.email ?? (DEMO_MODE ? 'Демонстрационный проект' : 'Рабочие встречи')}</small></div></div></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumbs"><button onClick={() => setView('projects')}>Проекты</button><Icon name="chevron" size={14}/><span>{view === 'workspace' ? 'Встреча с заказчиком' : view === 'documents' ? 'Документы' : 'Все проекты'}</span></div><div className="topbar-right"><span className={`mode-badge ${DEMO_MODE ? '' : 'live'}`}>{DEMO_MODE ? 'Деморежим' : 'FastAPI'}</span><span className="avatar small">R</span></div></header>
+      <header className="topbar"><div className="breadcrumbs"><button onClick={() => setView('projects')}>Проекты</button><Icon name="chevron" size={14}/><span>{view === 'workspace' ? 'Встреча с заказчиком' : view === 'documents' ? 'Документы' : 'Все проекты'}</span></div><div className="topbar-right"><span className={`mode-badge ${DEMO_MODE ? '' : 'live'}`}>{DEMO_MODE ? 'Деморежим' : 'FastAPI'}</span><span className="avatar small" title={user ? `${user.name} · ${user.email}` : undefined}>{initial}</span>{user && <button className="icon-button logout-button" onClick={logout} title="Выйти" aria-label="Выйти из аккаунта"><Icon name="logout" size={19}/></button>}</div></header>
       <main>
         {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => { if (!dirty || window.confirm('Обновление заменит правки данными сервера. Сначала экспортируйте ТЗ, если хотите сохранить изменения. Продолжить?')) { setDirty(false); void refresh(); } }}>Повторить</button></div>}
         {view === 'documents' ? <>

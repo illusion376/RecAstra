@@ -1,5 +1,6 @@
 import os
 os.environ['LLM_PROVIDER'] = 'mock'
+os.environ['AUTH_REQUIRED'] = 'false'  # авторизацию проверяет test_auth.py
 import asyncio
 import unittest
 from fastapi.testclient import TestClient

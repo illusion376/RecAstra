@@ -20,6 +20,7 @@ from pathlib import Path
 # а проверять здесь надо логику приложения, а не качество нейросети.
 # Переменные окружения приоритетнее .env, поэтому хватает установки до импорта.
 os.environ["LLM_PROVIDER"] = "mock"
+os.environ["AUTH_REQUIRED"] = "false"  # авторизацию проверяет test_auth.py
 
 from fastapi.testclient import TestClient  # noqa: E402
 
