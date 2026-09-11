@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import Link from 'next/link';
 import { AuthScreen } from '@/components/auth-screen';
 import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
@@ -65,8 +66,8 @@ function Workspace({ user }: { user: User | null }) {
   useEffect(() => {
     if (DEMO_MODE) return;
     const controller = new AbortController(); initialController.current = controller;
-    void refresh(controller.signal);
-    return () => { controller.abort(); requestController.current?.abort(); };
+    const timer = setTimeout(() => void refresh(controller.signal), 0);
+    return () => { clearTimeout(timer); controller.abort(); requestController.current?.abort(); };
   }, []);
   useEffect(() => {
     if (!meeting || meeting.status !== 'processing' || DEMO_MODE) return;
@@ -152,7 +153,6 @@ function Workspace({ user }: { user: User | null }) {
   useEffect(() => {
     if (view !== 'documents' || DEMO_MODE) return;
     const controller = new AbortController();
-    setDocumentsLoading(true); setDocumentsError('');
     listDocuments(controller.signal).then(rows => { if (!controller.signal.aborted) setDocuments(rows); })
       .catch(e => { if (!controller.signal.aborted) setDocumentsError(e instanceof Error ? e.message : 'Не удалось загрузить документы.'); })
       .finally(() => { if (!controller.signal.aborted) setDocumentsLoading(false); });
@@ -222,11 +222,11 @@ function Workspace({ user }: { user: User | null }) {
 
   return <div className="app-shell">
     <aside className="sidebar">
-      <a href="/" className="brand" aria-label="RecAstra — главная"><span className="brand-mark">R<span>✦</span></span>RecAstra</a>
+      <Link href="/" className="brand" aria-label="RecAstra — главная"><span className="brand-mark">R<span>✦</span></span>RecAstra</Link>
       <div className="nav-caption">РАБОЧЕЕ ПРОСТРАНСТВО</div>
       <nav aria-label="Основная навигация">{([
         ['projects','folder','Проекты'], ['documents','file','Документы'],
-      ] as const).map(([id, icon, label]) => <button key={id} className={(view === id || (id === 'projects' && view === 'workspace')) ? 'nav-item selected' : 'nav-item'} onClick={() => { setView(id); setGlobalQuery(''); }}><Icon name={icon}/><span>{label}</span>{id === 'projects' && <span className="nav-count">{meetings.length}</span>}</button>)}</nav>
+      ] as const).map(([id, icon, label]) => <button key={id} className={(view === id || (id === 'projects' && view === 'workspace')) ? 'nav-item selected' : 'nav-item'} onClick={() => { setView(id); setGlobalQuery(''); if (id === 'documents' && view !== 'documents' && !DEMO_MODE) { setDocumentsLoading(true); setDocumentsError(''); } }}><Icon name={icon}/><span>{label}</span>{id === 'projects' && <span className="nav-count">{meetings.length}</span>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="workspace-person"><span className="avatar">{initial}</span><div><b>{user?.name ?? 'Моё пространство'}</b><small>{user?.email ?? (DEMO_MODE ? 'Демонстрационный проект' : 'Рабочие встречи')}</small></div></div></div>
     </aside>
     <div className="main-shell">
