@@ -5,13 +5,13 @@
 """
 import os
 os.environ['LLM_PROVIDER'] = 'mock'
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app import deps
 from app.config import Settings, get_settings
 from app.core.auth import create_token, hash_password, read_token, verify_password
 from app.main import app
@@ -42,18 +42,28 @@ class PasswordAndTokenTests(unittest.TestCase):
 class AuthApiTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.users_file = str(Path(self.tmp.name) / 'users.json')
+        self.db_path = str(Path(self.tmp.name) / 'db.sqlite')
         self.required = True
         app.dependency_overrides[get_settings] = lambda: Settings(
-            users_file=self.users_file, auth_required=self.required,
-            auth_secret=SECRET, documents_dir=self.tmp.name, llm_provider='mock',
+            database_path=self.db_path, auth_required=self.required,
+            auth_secret=SECRET, llm_provider='mock',
         )
         self.client = TestClient(app).__enter__()
 
     def tearDown(self):
         self.client.__exit__(None, None, None)
+        self.restart()
         app.dependency_overrides.clear()
         self.tmp.cleanup()
+
+    @property
+    def db(self):
+        return deps._database_for(self.db_path)
+
+    def restart(self):
+        """Имитация перезапуска сервера: закрыть базу и забыть соединение."""
+        self.db.close()
+        deps._database_for.cache_clear()
 
     def register(self, email='anna@example.com', password='secret1', name='Анна'):
         return self.client.post('/auth/register', json={'email': email, 'password': password, 'name': name})
@@ -93,25 +103,27 @@ class AuthApiTests(unittest.TestCase):
             self.assertEqual(bad.status_code, 401)
             self.assertEqual(bad.json()['detail'], 'Неверная почта или пароль')
 
-        stored = Path(self.users_file).read_text(encoding='utf-8')
-        self.assertNotIn('secret1', stored, 'пароль не должен лежать открытым текстом')
-        self.assertEqual(len(json.loads(stored)['users']), 1)
+        rows = self.db.query('SELECT email, password_hash FROM users')
+        self.assertEqual([r['email'] for r in rows], ['anna@example.com'])
+        self.assertNotIn('secret1', rows[0]['password_hash'], 'пароль не должен лежать открытым текстом')
 
     def test_validation(self):
         self.assertEqual(self.register(password='12345').status_code, 422)
         self.assertEqual(self.register(email='не-почта').status_code, 422)
         self.assertEqual(self.register(name='   ').status_code, 422)
-        self.assertFalse(Path(self.users_file).exists())
+        self.assertEqual(self.db.query('SELECT COUNT(*) AS n FROM users')[0]['n'], 0)
 
     def test_users_survive_restart(self):
         self.assertEqual(self.register().status_code, 201)
+        self.restart()
         with TestClient(app) as client:
             r = client.post('/auth/login', json={'email': 'anna@example.com', 'password': 'secret1'})
             self.assertEqual(r.status_code, 200)
 
     def test_token_of_deleted_user(self):
         token = self.register().json()['token']
-        Path(self.users_file).write_text('{"users": []}', encoding='utf-8')
+        with self.db.transaction() as c:
+            c.execute('DELETE FROM users')
         r = self.client.get('/meetings', headers={'Authorization': f'Bearer {token}'})
         self.assertEqual(r.status_code, 401)
 
@@ -124,14 +136,16 @@ class AuthApiTests(unittest.TestCase):
 class GeneratedSecretTests(unittest.TestCase):
     def test_secret_is_persisted(self):
         with tempfile.TemporaryDirectory() as directory:
-            users_file = str(Path(directory) / 'sub' / 'users.json')
-            app.dependency_overrides[get_settings] = lambda: Settings(users_file=users_file, auth_secret='', auth_required=True, llm_provider='mock')
+            db_path = str(Path(directory) / 'sub' / 'db.sqlite')
+            app.dependency_overrides[get_settings] = lambda: Settings(database_path=db_path, auth_secret='', auth_required=True, llm_provider='mock')
             try:
                 with TestClient(app) as client:
                     token = client.post('/auth/register', json={'email': 'a@b.cd', 'password': 'secret1', 'name': 'А'}).json()['token']
                     self.assertEqual(client.get('/auth/me', headers={'Authorization': f'Bearer {token}'}).status_code, 200)
                 self.assertTrue((Path(directory) / 'sub' / '.auth_secret').read_text().strip())
             finally:
+                deps._database_for(db_path).close()
+                deps._database_for.cache_clear()
                 app.dependency_overrides.clear()
 
 

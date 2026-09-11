@@ -1,12 +1,18 @@
-"""Exported specifications: immutable snapshots, persisted independently of meetings."""
-import os
+"""Exported specifications: immutable snapshots, persisted independently of meetings.
+
+Документы хранятся в базе (таблица documents) и принадлежат пользователю:
+каждый видит и удаляет только свои.
+"""
+import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from app.config import Settings, get_settings
+
+from app.deps import get_current_user, get_database
+from app.storage.sqlite import Database
+from app.storage.users import User
 
 router = APIRouter(prefix='/documents', tags=['документы'])
 
@@ -20,41 +26,28 @@ class Document(DocumentCreate):
     created_at: datetime
 
 @router.get('', response_model=list[Document])
-def list_documents(settings: Settings = Depends(get_settings)):
-    directory = Path(settings.documents_dir)
-    docs = []
-    for path in directory.glob('*.json'):
-        try:
-            docs.append(Document.model_validate_json(path.read_text(encoding='utf-8')))
-        except (ValueError, OSError):
-            continue
-    return sorted(docs, key=lambda doc: doc.created_at, reverse=True)
+def list_documents(db: Database = Depends(get_database), user: User = Depends(get_current_user)):
+    return [Document.model_validate(row) for row in db.list_documents(user.id)]
 
 @router.post('', response_model=Document, status_code=201)
-def save_document(body: DocumentCreate, settings: Settings = Depends(get_settings)):
-    directory = Path(settings.documents_dir)
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f'{body.id}.json'
-    if path.exists():
-        previous = Document.model_validate_json(path.read_text(encoding='utf-8'))
-        if previous.model_dump(exclude={'created_at'}) != body.model_dump():
+def save_document(body: DocumentCreate, db: Database = Depends(get_database), user: User = Depends(get_current_user)):
+    previous = db.get_document(str(body.id))
+    if previous is not None:
+        # Повтор того же экспорта (например, после обрыва связи) — не ошибка.
+        same = previous['owner_id'] == user.id and Document.model_validate(previous).model_dump(exclude={'created_at'}) == body.model_dump()
+        if not same:
             raise HTTPException(409, 'Документ с таким ID уже существует')
-        return previous
+        return Document.model_validate(previous)
     document = Document(**body.model_dump(), created_at=datetime.now(timezone.utc))
-    temporary = directory / f'.{uuid4()}.tmp'
     try:
-        temporary.write_text(document.model_dump_json(), encoding='utf-8')
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+        db.add_document(user.id, str(document.id), document.meeting_id, document.title, document.content, document.created_at)
+    except sqlite3.IntegrityError:  # тот же ID успели сохранить параллельным запросом
+        raise HTTPException(409, 'Документ с таким ID уже существует')
     return document
 
 
 @router.delete('/{document_id}')
-def delete_document(document_id: UUID, settings: Settings = Depends(get_settings)):
-    path = Path(settings.documents_dir) / f'{document_id}.json'
-    try:
-        path.unlink()
-    except FileNotFoundError:
+def delete_document(document_id: UUID, db: Database = Depends(get_database), user: User = Depends(get_current_user)):
+    if not db.delete_document(user.id, str(document_id)):
         raise HTTPException(404, 'Документ уже удалён или не найден')
     return {'id': str(document_id), 'deleted': True}

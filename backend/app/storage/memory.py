@@ -1,18 +1,25 @@
 """
 In-memory реализация хранилища.
 
-Позволяет фронту работать с бэком уже сейчас, пока PostgreSQL не подключён.
-Заменяется на PostgresStorage без правок в роутах.
+Рабочие данные живут в SQLite (app/storage/sqlite.py). Эта реализация
+осталась для быстрых изолированных тестов: подставляется через
+app.dependency_overrides[get_storage].
 """
 
 from __future__ import annotations
 
 import asyncio
-import unicodedata
 from typing import Optional
 
 from app.schemas import Analysis, Item, ItemType, TranscriptSegment
-from app.storage.base import Storage, DuplicateProjectTitle
+from app.storage.base import (
+    DUPLICATE_TITLE_MESSAGE,
+    DuplicateProjectTitle,
+    Storage,
+    filter_and_sort_items,
+    normalize_title,
+    title_key,
+)
 
 
 class MemoryStorage(Storage):
@@ -26,13 +33,12 @@ class MemoryStorage(Storage):
 
     async def create_analysis(self, analysis: Analysis) -> Analysis:
         async with self._lock:
-            title = " ".join(unicodedata.normalize("NFKC", analysis.meta.title or "").split())
+            title = normalize_title(analysis.meta.title)
             if title and any(
-                other.id != analysis.id and
-                " ".join(unicodedata.normalize("NFKC", other.meta.title or "").split()).casefold() == title.casefold()
+                other.id != analysis.id and title_key(other.meta.title) == title_key(title)
                 for other in self._analyses.values()
             ):
-                raise DuplicateProjectTitle("Проект с таким названием уже существует. Выберите другое название.")
+                raise DuplicateProjectTitle(DUPLICATE_TITLE_MESSAGE)
             analysis.meta.title = title or None
             self._analyses[analysis.id] = analysis
             self._items.setdefault(analysis.id, {})
@@ -103,31 +109,4 @@ class MemoryStorage(Storage):
         query: Optional[str] = None,
     ) -> list[Item]:
         items = list(self._items.get(analysis_id, {}).values())
-
-        if types:
-            wanted = {t.value for t in types}
-            items = [i for i in items if i.type.value in wanted]
-        if statuses:
-            items = [i for i in items if i.status.value in set(statuses)]
-        if role:
-            needle = role.casefold()
-            items = [i for i in items if i.role and needle in i.role.casefold()]
-        if query:
-            needle = query.casefold()
-            items = [
-                i
-                for i in items
-                if needle in i.title.casefold() or needle in i.text.casefold()
-            ]
-
-        # Стабильный порядок: сначала по типу (в порядке кейса), затем по времени
-        # в разговоре — так список на фронте не «прыгает» между запросами.
-        type_order = {t.value: n for n, t in enumerate(ItemType)}
-        items.sort(
-            key=lambda i: (
-                type_order.get(i.type.value, 99),
-                i.source.start if i.source and i.source.start is not None else 1e9,
-                i.created_at,
-            )
-        )
-        return items
+        return filter_and_sort_items(items, types, statuses, role, query)

@@ -58,6 +58,7 @@ class LocalClient:
     def __init__(self) -> None:
         # Внутри процесса вход не нужен: проверяем анализ, а не авторизацию.
         os.environ.setdefault("AUTH_REQUIRED", "false")
+        os.environ.setdefault("DATABASE_PATH", ":memory:")  # прогон не оставляет следов в базе
         from fastapi.testclient import TestClient
 
         from app.main import app

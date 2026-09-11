@@ -24,6 +24,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["AUTH_REQUIRED"] = "false"  # авторизацию проверяет test_auth.py
+os.environ["DATABASE_PATH"] = ":memory:"  # не трогать рабочую базу
 os.environ["MEDIA_DIR"] = str(Path(__file__).parent / "media_test")
 
 sys.path.insert(0, str(Path(__file__).parent))

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AuthScreen } from '@/components/auth-screen';
 import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
-import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, deleteDocument, ExportedDocument } from '@/lib/api';
+import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, deleteDocument, saveAnalysis, ExportedDocument } from '@/lib/api';
 import { demoMeeting } from '@/lib/demo';
 import { Meeting, analysisItems, specification, time, participantLabel } from '@/lib/meeting';
 import { User, clearSession, getSession, subscribeSession } from '@/lib/session';
@@ -39,7 +39,10 @@ function Workspace({ user }: { user: User | null }) {
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState('');
-  const [dirty, setDirty] = useState(false);
+  // Сколько правок у встречи ещё не сохранено на сервере; нет ключа — всё сохранено.
+  const [revisions, setRevisions] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
+  const dirty = Object.keys(revisions).length > 0;
   const [audioTime, setAudioTime] = useState(0);
   const [audioFailed, setAudioFailed] = useState(false);
   const audio = useRef<HTMLAudioElement>(null);
@@ -92,12 +95,27 @@ function Workspace({ user }: { user: User | null }) {
   }, [dirty]);
 
   function logout() {
-    if (dirty && !window.confirm('Правки, не сохранённые через экспорт ТЗ, пропадут. Выйти?')) return;
+    if (dirty && !window.confirm('Несохранённые правки пропадут. Выйти?')) return;
     requestController.current?.abort(); clearSession();
   }
   const initial = (user?.name.trim()[0] ?? 'R').toLocaleUpperCase('ru');
   function updateMeeting(change: (m: Meeting) => Meeting) {
-    setMeetings(rows => rows.map(m => m.id === selected ? change(m) : m)); setDirty(true);
+    setMeetings(rows => rows.map(m => m.id === selected ? change(m) : m));
+    setRevisions(r => ({ ...r, [selected]: (r[selected] ?? 0) + 1 }));
+  }
+  async function save() {
+    if (!meeting || saving || DEMO_MODE) return;
+    const id = meeting.id, revision = revisions[id], snapshot = analysisItems(meeting);
+    setSaving(true);
+    try {
+      const saved = await saveAnalysis(id, snapshot);
+      // Если за время запроса встречу успели ещё поправить, свежие правки не затираем.
+      setMeetings(rows => rows.map(m => m.id === id && analysisItems(m) === snapshot ? saved : m));
+      setRevisions(r => { if (r[id] !== revision) return r; const next = { ...r }; delete next[id]; return next; });
+      setNotice('Изменения сохранены.');
+    } catch (e) {
+      setError(`Не удалось сохранить изменения: ${e instanceof Error ? e.message : 'ошибка сервера'}`);
+    } finally { setSaving(false); }
   }
   function openMeeting(m: Meeting) {
     setSelected(m.id); setView('workspace'); setQuery(''); setSpeaker('all'); setActiveSource(null); setAudioTime(0); setAudioFailed(false);
@@ -190,7 +208,7 @@ function Workspace({ user }: { user: User | null }) {
     <div className="main-shell">
       <header className="topbar"><div className="breadcrumbs"><button onClick={() => setView('projects')}>Проекты</button><Icon name="chevron" size={14}/><span>{view === 'workspace' ? 'Встреча с заказчиком' : view === 'documents' ? 'Документы' : 'Все проекты'}</span></div><div className="topbar-right"><span className={`mode-badge ${DEMO_MODE ? '' : 'live'}`}>{DEMO_MODE ? 'Деморежим' : 'FastAPI'}</span><span className="avatar small" title={user ? `${user.name} · ${user.email}` : undefined}>{initial}</span>{user && <button className="icon-button logout-button" onClick={logout} title="Выйти" aria-label="Выйти из аккаунта"><Icon name="logout" size={19}/></button>}</div></header>
       <main>
-        {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => { if (!dirty || window.confirm('Обновление заменит правки данными сервера. Сначала экспортируйте ТЗ, если хотите сохранить изменения. Продолжить?')) { setDirty(false); void refresh(); } }}>Повторить</button></div>}
+        {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => { if (!dirty || window.confirm('Обновление заменит несохранённые правки данными сервера. Продолжить?')) { setRevisions({}); void refresh(); } }}>Повторить</button></div>}
         {view === 'documents' ? <>
           <div className="page-heading"><div><div className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div><h1>Документы</h1><p>{DEMO_MODE ? 'Деморежим: экспортированные ТЗ хранятся до закрытия вкладки.' : 'Технические задания, сохранённые при экспорте.'}</p></div></div>
           <label className="search list-search"><Icon name="search" size={18}/><input aria-label="Поиск документов" placeholder="Найти ТЗ…" value={globalQuery} onChange={e => setGlobalQuery(e.target.value)}/></label>
@@ -203,7 +221,7 @@ function Workspace({ user }: { user: User | null }) {
           <div className="project-grid">{filteredMeetings.map(m => <button className="project-card" key={m.id} onClick={() => { openMeeting(m); }}><span className="tile-icon"><Icon name="folder" size={25}/></span><span className="card-state">{m.status === 'ready' ? 'Готово к работе' : m.status === 'processing' ? 'Обрабатывается' : 'Ошибка обработки'}</span><h2>{m.title}</h2><p>{m.filename}</p><div className="project-meta"><span><Icon name="clock" size={16}/>{time(m.duration)}</span><span>{analysisItems(m).length} пунктов</span><Icon name="chevron" size={16}/></div></button>)}</div>
           {!filteredMeetings.length && <div className="empty-state"><Icon name="folder" size={36}/><h2>{globalQuery ? 'Ничего не найдено' : 'Пока нет встреч'}</h2><p>{globalQuery ? 'Попробуйте другое название.' : 'Загрузите первую запись разговора с заказчиком.'}</p></div>}
         </> : !meeting ? <div className="empty-state"><Icon name="upload" size={40}/><h1>Начните с новой встречи</h1><p>Загрузите запись, чтобы получить расшифровку с сервера.</p><button className="button primary" onClick={() => uploadDialog.current?.showModal()}>Загрузить запись</button></div> : <>
-          <div className="page-heading"><div><div className="eyebrow"><span className="project-dot"/>ПРОЕКТ · {DEMO_MODE ? 'ПРИМЕР' : 'ВСТРЕЧА'}</div><h1>{meeting.title}</h1><p className="meeting-meta">Встреча с заказчиком<span>·</span>{Math.ceil(meeting.duration / 60)} мин<span>·</span>{Number.isNaN(Date.parse(meeting.date)) ? meeting.date : new Date(meeting.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' })}</p></div><div className="heading-actions"><button className="button secondary" onClick={() => uploadDialog.current?.showModal()}><Icon name="upload" size={18}/>Загрузить запись</button><button className="button primary" onClick={download} disabled={meeting.status !== 'ready' || exporting}><Icon name="download" size={18}/>{exporting ? 'Сохраняем…' : 'Экспорт ТЗ'}</button></div></div>
+          <div className="page-heading"><div><div className="eyebrow"><span className="project-dot"/>ПРОЕКТ · {DEMO_MODE ? 'ПРИМЕР' : 'ВСТРЕЧА'}</div><h1>{meeting.title}</h1><p className="meeting-meta">Встреча с заказчиком<span>·</span>{Math.ceil(meeting.duration / 60)} мин<span>·</span>{Number.isNaN(Date.parse(meeting.date)) ? meeting.date : new Date(meeting.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Europe/Moscow' })}</p></div><div className="heading-actions"><button className="button secondary" onClick={() => uploadDialog.current?.showModal()}><Icon name="upload" size={18}/>Загрузить запись</button>{!DEMO_MODE && <button className="button secondary" onClick={save} disabled={!revisions[meeting.id] || saving || meeting.status !== 'ready'}><Icon name="check" size={18}/>{saving ? 'Сохраняем…' : revisions[meeting.id] ? 'Сохранить' : 'Сохранено'}</button>}<button className="button primary" onClick={download} disabled={meeting.status !== 'ready' || exporting}><Icon name="download" size={18}/>{exporting ? 'Сохраняем…' : 'Экспорт ТЗ'}</button></div></div>
           {meeting.status === 'processing' && <div className="info-banner" role="status"><span className="spinner"/>Сервер обрабатывает запись. Результат появится автоматически.</div>}
           {meeting.status === 'failed' && <div className="error-banner" role="alert">Сервер не смог обработать запись. Попробуйте загрузить её снова.</div>}
           <div className="workspace-grid"><section className="panel recording"><div className="panel-heading"><h2>Запись встречи</h2><span className="label-muted">АУДИО</span></div><div className="audio-file"><span className="file-icon"><Icon name="file" size={24}/></span><div><b>{meeting.filename || 'Запись встречи'}</b><small>{time(meeting.duration)}{DEMO_MODE ? ' · Демонстрационная запись' : ''}</small></div></div>
@@ -216,7 +234,7 @@ function Workspace({ user }: { user: User | null }) {
             <RequirementsBoard key={meeting.id} meeting={meeting} onUpdate={updateMeeting} onSource={jump}/>
 
           </section>
-          </div></div><footer className="page-footer"><span>RecAstra · Рабочее пространство требований</span><span>{dirty ? 'Правки в текущей сессии · сохраните через экспорт ТЗ' : 'Проверьте результат перед согласованием'}</span></footer>
+          </div></div><footer className="page-footer"><span>RecAstra · Рабочее пространство требований</span><span>{DEMO_MODE ? (dirty ? 'Правки в текущей сессии · сохраните через экспорт ТЗ' : 'Проверьте результат перед согласованием') : dirty ? 'Есть несохранённые правки · нажмите «Сохранить»' : 'Правки сохраняются в вашем аккаунте'}</span></footer>
         </>}
       </main>
     </div>

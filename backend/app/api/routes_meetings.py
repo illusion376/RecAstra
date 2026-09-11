@@ -400,16 +400,21 @@ async def put_analysis(
 
 @router.get("/media/{name}", summary="Аудиозапись встречи")
 async def get_media(
-    name: str, request: Request, settings: Settings = Depends(get_settings)
+    name: str,
+    request: Request,
+    storage: Storage = Depends(get_storage),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
     """
     Отдаёт запись плееру. Поддерживает Range: без него браузер не сможет
     перематывать длинную запись, а перемотка по клику на требование —
     это и есть связь с исходным разговором из кейса.
+
+    Файл называется по ID встречи, и отдаём его только владельцу встречи.
     """
     safe = Path(name).name  # обрезаем любые «../» из имени
     path = _media_dir(settings) / safe
-    if not path.is_file():
+    if not path.is_file() or await storage.get_analysis(Path(safe).stem) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Запись не найдена")
 
     file_size = path.stat().st_size

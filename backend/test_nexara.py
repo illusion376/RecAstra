@@ -20,6 +20,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # указанную в .env, и тратил бы деньги на каждом прогоне.
 os.environ["LLM_PROVIDER"] = "mock"
 os.environ["AUTH_REQUIRED"] = "false"  # авторизацию проверяет test_auth.py
+os.environ["DATABASE_PATH"] = ":memory:"  # не трогать рабочую базу
 
 sys.path.insert(0, str(Path(__file__).parent))
 

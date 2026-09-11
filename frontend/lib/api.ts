@@ -1,4 +1,4 @@
-import { Meeting, parseMeeting } from './meeting';
+import { AnalysisItem, Meeting, parseMeeting } from './meeting';
 import { Session, User, clearSession, sessionToken } from './session';
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? '').replace(/\/$/, '');
 export const DEMO_MODE = !API_URL;
@@ -64,6 +64,10 @@ export async function uploadMeeting(file: File, title: string, signal?: AbortSig
   const body = new FormData(); body.append('file', file); body.append('title', title);
 
   return normalize(await request('/meetings', { method: 'POST', body, signal }));
+}
+/** Сохранить анализ встречи целиком: сервер заменяет все карточки присланными. */
+export async function saveAnalysis(id: string, analysis: AnalysisItem[], signal?: AbortSignal): Promise<Meeting> {
+  return normalize(await request(`/meetings/${encodeURIComponent(id)}/analysis`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ analysis }), signal }));
 }
 
 export type ExportedDocument = { id: string; meeting_id: string; title: string; content: string; created_at: string };

@@ -39,13 +39,17 @@ class Settings(BaseSettings):
     auth_secret: str = Field(
         "",
         description="Секрет подписи токенов. Пусто — сгенерируется и сохранится "
-        "в .auth_secret рядом с файлом пользователей.",
+        "в .auth_secret рядом с файлом базы.",
     )
     auth_token_ttl_hours: int = Field(
         168, ge=1, description="Сколько живёт токен входа, часы (по умолчанию неделя)"
     )
-    users_file: str = Field(
-        "data/users.json", description="Где хранить зарегистрированных пользователей"
+
+    # --- База данных ------------------------------------------------------
+    database_path: str = Field(
+        "data/recastra.db",
+        description="Файл SQLite с пользователями, проектами и документами. "
+        "\":memory:\" — база в памяти до перезапуска (для тестов).",
     )
 
     # --- LLM --------------------------------------------------------------
@@ -154,7 +158,6 @@ class Settings(BaseSettings):
     transcript_language: str = Field(
         "ru", description="Язык записи. Пусто — определять автоматически."
     )
-    documents_dir: str = "documents"
     media_dir: str = Field("media", description="Куда складывать загруженные записи")
     max_upload_mb: int = Field(
         200, ge=1, description="Потолок размера записи, мегабайты (как на фронте)"

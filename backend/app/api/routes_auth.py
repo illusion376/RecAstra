@@ -19,8 +19,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.config import Settings, get_settings
 from app.core.auth import create_token, hash_password, verify_password
-from app.deps import get_auth_secret, get_current_user, get_user_store
-from app.storage.users import EmailTaken, StoredUser, User, UserStore
+from app.deps import get_auth_secret, get_current_user, get_database
+from app.storage.sqlite import Database
+from app.storage.users import EmailTaken, StoredUser, User
 
 router = APIRouter(prefix="/auth", tags=["авторизация"])
 
@@ -78,10 +79,10 @@ def _session(user: StoredUser, settings: Settings) -> AuthResponse:
 def register(
     body: RegisterRequest,
     settings: Settings = Depends(get_settings),
-    users: UserStore = Depends(get_user_store),
+    db: Database = Depends(get_database),
 ) -> AuthResponse:
     try:
-        user = users.create(body.email, body.name, hash_password(body.password))
+        user = db.create_user(body.email, body.name, hash_password(body.password))
     except EmailTaken as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return _session(user, settings)
@@ -91,9 +92,9 @@ def register(
 def login(
     body: Credentials,
     settings: Settings = Depends(get_settings),
-    users: UserStore = Depends(get_user_store),
+    db: Database = Depends(get_database),
 ) -> AuthResponse:
-    user = users.get_by_email(body.email)
+    user = db.get_user_by_email(body.email)
     valid = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
     if not user or not valid:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Неверная почта или пароль")
