@@ -1,0 +1,49 @@
+# RecAstra целиком: бэкенд (FastAPI) + фронтенд (Next.js).
+#
+#   docker compose up --build
+#
+# Фронтенд — http://localhost:3000, API и документация — http://localhost:8000/docs.
+# Ключи LLM и распознавания берутся из backend/.env (если файла нет,
+# бэкенд работает на mock без сети). Пользователи, проекты, документы
+# и записи встреч лежат в томах и переживают пересборку контейнеров.
+#
+# Переменные для этого файла можно задать в .env рядом с ним:
+#   FRONTEND_PORT, BACKEND_PORT — порты на хосте (3000 и 8000);
+#   NEXT_PUBLIC_API_URL — адрес API для браузера (http://localhost:8000).
+#     На сервере укажите внешний адрес, например http://example.com:8000,
+#     и пересоберите фронтенд: адрес вшивается в сборку.
+
+name: recastra
+
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      # Пути внутри контейнера — строго в томах, что бы ни было в .env.
+      DATABASE_PATH: /app/data/recastra.db
+      MEDIA_DIR: /app/media
+    volumes:
+      - backend-data:/app/data
+      - backend-media:/app/media
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-media:

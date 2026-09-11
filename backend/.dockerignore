@@ -1,0 +1,17 @@
+# Секреты и локальные данные в образ не попадают: ключи — через env_file,
+# база и записи — через тома.
+.env
+.env.*
+!.env.example
+data/
+media/
+media_test/
+documents/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.DS_Store
