@@ -1,0 +1,68 @@
+{
+  "id": "meeting-001",
+  "title": "Сервис онлайн-записи",
+  "date": "2026-09-10T10:00:00+03:00",
+  "filename": "meeting.mp3",
+  "duration": 1800,
+  "status": "ready",
+  "audio_url": "/media/meeting-001.mp3",
+  "transcript": [
+    {
+      "id": "s1",
+      "speaker": "Заказчик",
+      "start": 754,
+      "text": "Клиент выбирает специалиста и удобное время. На первом этапе без оплаты. Нужна мобильная версия. Условия отмены уточним. Партнёров подключим позже."
+    }
+  ],
+  "analysis": [
+    {
+      "id": "a1",
+      "kind": "functional",
+      "title": "Онлайн-запись",
+      "description": "Клиент выбирает специалиста и доступное время.",
+      "source": 754,
+      "needs_clarification": false
+    },
+    {
+      "id": "a2",
+      "kind": "scenarios",
+      "title": "Выбор времени",
+      "description": "Открыть список специалистов, выбрать специалиста и свободный слот.",
+      "source": 754,
+      "needs_clarification": false
+    },
+    {
+      "id": "a3",
+      "kind": "constraints",
+      "title": "Без оплаты",
+      "description": "На первом этапе не подключаем онлайн-оплату.",
+      "source": 754,
+      "needs_clarification": false
+    },
+    {
+      "id": "a4",
+      "kind": "conditions",
+      "title": "Мобильная версия",
+      "description": "Сервис должен быть удобен на смартфоне.",
+      "source": 754,
+      "needs_clarification": false
+    },
+    {
+      "id": "a5",
+      "kind": "questions",
+      "title": "Каковы условия отмены?",
+      "description": "Уточнить допустимый срок отмены записи.",
+      "source": 754,
+      "needs_clarification": true,
+      "resolved": false
+    },
+    {
+      "id": "a6",
+      "kind": "agreements",
+      "title": "Партнёры позже",
+      "description": "В первой версии доступны только специалисты компании.",
+      "source": 754,
+      "needs_clarification": false
+    }
+  ]
+}
