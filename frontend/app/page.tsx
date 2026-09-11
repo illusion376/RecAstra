@@ -7,6 +7,7 @@ import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
 import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, deleteMeeting, correctSpeaker, saveDocument, deleteDocument, saveAnalysis, ExportedDocument } from '@/lib/api';
 import { demoMeeting } from '@/lib/demo';
+import { downloadText, newId, specFileName } from '@/lib/export';
 import { Meeting, analysisItems, specification, time, participantLabel } from '@/lib/meeting';
 import { User, clearSession, getSession, subscribeSession } from '@/lib/session';
 
@@ -130,24 +131,38 @@ function Workspace({ user }: { user: User | null }) {
     if (audio.current && Number.isFinite(audio.current.duration)) audio.current.currentTime = Math.min(seconds, audio.current.duration);
     setTimeout(() => document.getElementById(`source-${target}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 0);
   }
-  function downloadFile(title: string, content: string) {
-    const url = URL.createObjectURL(new Blob([content], {type: 'text/markdown;charset=utf-8'}));
-    const link = document.createElement('a');
-    link.href = url; link.download = `ТЗ_${title.replace(/[^\p{L}\p{N}_-]/gu, '_')}.md`; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  function downloadFile(title: string, content: string): boolean {
+    try { downloadText(specFileName(title), content); return true; }
+    catch (e) { setError(`Не удалось скачать файл: ${e instanceof Error ? e.message : 'ошибка браузера'}`); return false; }
   }
   async function download() {
     if (!meeting || exporting) return;
-    const snapshot = {id: crypto.randomUUID(), meeting_id: meeting.id, title: meeting.title, content: specification(meeting)};
+    // Любая ошибка должна дойти до пользователя, а не молча оборвать экспорт:
+    // раньше crypto.randomUUID (его нет при открытии по http://IP) падал
+    // до try, и кнопка просто ничего не делала.
+    let snapshot: Omit<ExportedDocument, 'created_at'>;
+    try {
+      snapshot = {id: newId(), meeting_id: meeting.id, title: meeting.title, content: specification(meeting)};
+    } catch (e) {
+      setError(`Не удалось сформировать ТЗ: ${e instanceof Error ? e.message : 'неизвестная ошибка'}`);
+      return;
+    }
+    // Скачиваем сразу, пока идёт обработка клика: Safari и строгие настройки
+    // браузера не дают начать загрузку после сетевого запроса.
+    if (!downloadFile(snapshot.title, snapshot.content)) return;
+    if (DEMO_MODE) {
+      const saved = {...snapshot, created_at: new Date().toISOString()};
+      setDocuments(rows => [saved, ...rows]);
+      setNotice('ТЗ отправлено на скачивание.');
+      return;
+    }
     setExporting(true);
     try {
-      const saved = DEMO_MODE ? {...snapshot, created_at: new Date().toISOString()} : await saveDocument(snapshot);
+      const saved = await saveDocument(snapshot);
       setDocuments(rows => [saved, ...rows.filter(row => row.id !== saved.id)]);
-      downloadFile(saved.title, saved.content);
-      setNotice('ТЗ добавлено в «Документы» и отправлено на скачивание.');
+      setNotice('ТЗ скачано и сохранено в «Документы».');
     } catch (e) {
-      downloadFile(snapshot.title, snapshot.content);
-      setError(`ТЗ отправлено на скачивание, но не сохранено в «Документы»: ${e instanceof Error ? e.message : 'ошибка сервера'}`);
+      setError(`ТЗ скачано, но не сохранено в «Документы»: ${e instanceof Error ? e.message : 'ошибка сервера'}`);
     } finally { setExporting(false); }
   }
   useEffect(() => {

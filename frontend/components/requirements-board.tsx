@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Icon } from './icon';
+import { newId } from '@/lib/export';
 import { ANALYSIS_SECTIONS, confidenceLabel, PRIORITY_LABELS, sortByPriority, analysisItems, time, participantLabel } from '@/lib/meeting';
 import type { AnalysisItem, AnalysisKind, Meeting, Priority } from '@/lib/meeting';
 
@@ -35,7 +36,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
     const title = String(data.get('title') ?? '').trim();
     if (!title) { setFormError('Укажите название или формулировку пункта.'); return; }
     const item: AnalysisItem = {
-      ...editing, id: editing?.id ?? crypto.randomUUID(), kind, title,
+      ...editing, id: editing?.id ?? newId(), kind, title,
       description: String(data.get('description') ?? '').trim(),
       role: String(data.get('role') ?? '').trim(), source: editing?.source ?? null,
       confidence: editing && title === editing.title && String(data.get('description') ?? '').trim() === editing.description
