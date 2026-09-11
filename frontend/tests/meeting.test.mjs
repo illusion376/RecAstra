@@ -63,3 +63,14 @@ test('priority sorting is stable, non-mutating and reflected in export', () => {
   assert.match(md, /Приоритет: Высокий/);
   assert.throws(() => parseMeeting({...base, analysis:[{...rows[0],priority:'invalid'}]}));
 });
+
+test('confidence validates bounds and survives export including zero', () => {
+  const item = {id:'c',kind:'functional',title:'Форма',description:'',source:null};
+  for (const confidence of [0, 0.82, 1, null, undefined]) {
+    const m = parseMeeting({...base, analysis:[{...item, confidence}]});
+    assert.ok(specification(m).includes(confidence == null ? 'Не оценена' : `${Math.round(confidence * 100)}%`));
+  }
+  for (const confidence of [-0.1, 1.1, NaN, Infinity, '0.8']) {
+    assert.throws(() => parseMeeting({...base, analysis:[{...item, confidence}]}));
+  }
+});

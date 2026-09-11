@@ -124,6 +124,8 @@ class DatabaseApiTests(unittest.TestCase):
 
         # Правка владельца сохраняется в базе.
         edited = meeting['analysis'][:2]
+        original_confidence = edited[1]['confidence']
+        edited[1]['confidence'] = 1.0  # client cannot override model confidence
         edited[0]['description'] = 'Правка после встречи.'
         r = self.client.put(f'/meetings/{mid}/analysis', headers=self.anna, json={'analysis': edited})
         self.assertEqual(r.status_code, 200, r.text)
@@ -136,6 +138,8 @@ class DatabaseApiTests(unittest.TestCase):
             self.assertEqual(len(after['transcript']), len(meeting['transcript']))
             self.assertEqual([c['id'] for c in after['analysis']], [c['id'] for c in edited])
             self.assertEqual(after['analysis'][0]['description'], 'Правка после встречи.')
+            self.assertIsNone(after['analysis'][0].get('confidence'))
+            self.assertEqual(after['analysis'][1]['confidence'], original_confidence)
             self.assertEqual(client.get('/meetings', headers=self.boris).json(), [])
 
     def test_titles_are_unique_per_user(self):

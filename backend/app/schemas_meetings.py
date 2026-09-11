@@ -66,7 +66,7 @@ class AnalysisCard(BaseModel):
         description="Цитата найдена в расшифровке. false — вероятно, выдумка модели, "
         "стоит подсветить в интерфейсе",
     )
-    confidence: Optional[float] = Field(None, description="Уверенность системы, 0..1")
+    confidence: Optional[float] = Field(None, ge=0, le=1, description="Уверенность системы, 0..1; отсутствует для ручных правок")
     priority: Optional[str] = Field(None, description="must / should / could")
     user_story: Optional[str] = None
     source_end: Optional[float] = Field(None, description="Конец фрагмента, секунды")

@@ -109,7 +109,7 @@ def to_card(item: Item) -> AnalysisCard:
         resolved=resolved,
         quote=(item.source.quote or None) if item.source else None,
         verified=item.source.verified if item.source else None,
-        confidence=item.confidence,
+        confidence=item.confidence if item.origin == Origin.LLM else None,
         priority=item.priority.value if item.priority else None,
         user_story=item.user_story,
         source_end=item.source.end if item.source else None,
@@ -221,6 +221,7 @@ def card_to_item(
 
     changed = existing is not None and (
         existing.title != card.title or existing.text != card.description
+        or (existing.role or "") != (card.role or "")
     )
     if existing is None:
         origin = Origin.MANUAL

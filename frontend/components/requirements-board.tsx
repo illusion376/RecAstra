@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { Icon } from './icon';
-import { ANALYSIS_SECTIONS, PRIORITY_LABELS, sortByPriority, analysisItems, time, participantLabel } from '@/lib/meeting';
+import { ANALYSIS_SECTIONS, confidenceLabel, PRIORITY_LABELS, sortByPriority, analysisItems, time, participantLabel } from '@/lib/meeting';
 import type { AnalysisItem, AnalysisKind, Meeting, Priority } from '@/lib/meeting';
 
 type Props = {
@@ -38,6 +38,8 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
       ...editing, id: editing?.id ?? crypto.randomUUID(), kind, title,
       description: String(data.get('description') ?? '').trim(),
       role: String(data.get('role') ?? '').trim(), source: editing?.source ?? null,
+      confidence: editing && title === editing.title && String(data.get('description') ?? '').trim() === editing.description
+        && String(data.get('role') ?? '').trim() === (editing.role ?? '') ? editing.confidence : null,
       priority: (String(data.get('priority') ?? '') || null) as Priority | null,
       needs_clarification: data.get('clarification') === 'on',
     };
@@ -84,6 +86,10 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
                 <button disabled={!editable} className="delete-card" title="Удалить" aria-label={`Удалить: ${item.title}`} onClick={() => remove(item)}><Icon name="trash" size={16}/></button>
               </div></div>
               <span className={`priority-badge priority-${item.priority ?? 'unknown'}`}>Приоритет: {item.priority ? PRIORITY_LABELS[item.priority] : 'Не определён'}</span>
+              <span className={`confidence-badge ${item.confidence == null ? 'unknown' : item.confidence < 0.6 ? 'low' : item.confidence < 0.85 ? 'medium' : 'high'}`}
+                title="Оценка анализатором того, насколько пункт следует из разговора. Это не гарантия правильности. После ручного изменения формулировки оценка не применяется.">
+                Уверенность: {confidenceLabel(item.confidence)}
+              </span>
               {item.role && <span className="analysis-role">{participantLabel(item.role)}</span>}
               {item.description && <p className="analysis-description">{item.description}</p>}
               <div className="analysis-card-footer">
