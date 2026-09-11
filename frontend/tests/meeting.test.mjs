@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseMeeting, specification, time, analysisItems, ANALYSIS_SECTIONS } from '../lib/meeting.ts';
+import { parseMeeting, specification, time, analysisItems, ANALYSIS_SECTIONS, sortByPriority } from '../lib/meeting.ts';
 const base = {id:'1',title:'Проект',date:'2026-09-10',filename:'a.mp3',duration:30,status:'ready',transcript:[{id:'s1',speaker:'Заказчик',start:12,text:'Текст'}]};
 test('transcript-only responses do not invent requirements', () => {
   const meeting = parseMeeting(base);
@@ -51,4 +51,15 @@ test('invalid analysis items and duplicate identities are rejected', () => {
     assert.throws(() => parseMeeting({...base,analysis:[{...item,...patch}]}));
   }
   assert.throws(() => parseMeeting({...base,analysis:[item,item]}));
+});
+
+test('priority sorting is stable, non-mutating and reflected in export', () => {
+  const priorities = ['could', null, 'must', 'should', 'must', 'wont'];
+  const rows = priorities.map((priority, i) => ({id: String(i), kind:'functional', title:`Пункт ${i}`, description:'', source:null, priority}));
+  assert.deepEqual(sortByPriority(rows).map(r => r.id), ['2','4','3','0','5','1']);
+  assert.equal(rows[0].id, '0');
+  const md = specification(parseMeeting({...base, analysis: rows}));
+  assert.ok(md.indexOf('Пункт 2') < md.indexOf('Пункт 0'));
+  assert.match(md, /Приоритет: Высокий/);
+  assert.throws(() => parseMeeting({...base, analysis:[{...rows[0],priority:'invalid'}]}));
 });

@@ -99,6 +99,13 @@ app.include_router(documents_router)
 app.include_router(router)
 
 
+from app.storage.base import DuplicateProjectTitle
+
+@app.exception_handler(DuplicateProjectTitle)
+async def duplicate_title_handler(request: Request, exc: DuplicateProjectTitle) -> JSONResponse:
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
     """ValueError из конвейера — это некорректные данные, а не сбой сервера."""

@@ -5,7 +5,10 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
   try {
     const response = await fetch(`${API_URL}${path}`, { ...init, signal: init?.signal ?? AbortSignal.timeout(120000) });
 
-    if (!response.ok) throw new Error(`Не удалось выполнить запрос (${response.status}). Попробуйте ещё раз.`);
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(typeof body?.detail === 'string' ? body.detail : `Не удалось выполнить запрос (${response.status}). Попробуйте ещё раз.`);
+    }
 
     return await response.json();
   } catch (error) {
@@ -53,4 +56,8 @@ export async function listDocuments(signal?: AbortSignal): Promise<ExportedDocum
 }
 export async function saveDocument(document: Omit<ExportedDocument, 'created_at'>): Promise<ExportedDocument> {
   return parseDocument(await request('/documents', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(document) }));
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  await request(`/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

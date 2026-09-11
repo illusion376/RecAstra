@@ -25,6 +25,12 @@ class DocumentsTests(unittest.TestCase):
                     self.assertEqual(len(rows), 1)
                     self.assertEqual(rows[0]['content'], body['content'])
                     self.assertEqual(client.post('/documents', json={**body,'id':'../oops'}).status_code, 422)
+                    self.assertEqual(client.delete('/documents/not-a-uuid').status_code, 422)
+                    self.assertEqual(client.delete(f"/documents/{body['id']}").status_code, 200)
+                    self.assertEqual(client.get('/documents').json(), [])
+                    self.assertEqual(client.delete(f"/documents/{body['id']}").status_code, 404)
+                with TestClient(app) as client:
+                    self.assertEqual(client.get('/documents').json(), [])
             finally:
                 app.dependency_overrides.clear()
 

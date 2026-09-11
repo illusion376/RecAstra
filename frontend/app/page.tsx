@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/icon';
 import { RequirementsBoard } from '@/components/requirements-board';
-import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, ExportedDocument } from '@/lib/api';
+import { DEMO_MODE, getMeeting, listMeetings, uploadMeeting, listDocuments, saveDocument, deleteDocument, ExportedDocument } from '@/lib/api';
 import { demoMeeting } from '@/lib/demo';
 import { Meeting, analysisItems, specification, time, participantLabel } from '@/lib/meeting';
 
@@ -15,6 +15,7 @@ export default function Home() {
   const [documents, setDocuments] = useState<ExportedDocument[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsError, setDocumentsError] = useState('');
+  const [deletingDocument, setDeletingDocument] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [previewDocument, setPreviewDocument] = useState<ExportedDocument | null>(null);
   const documentDialog = useRef<HTMLDialogElement>(null);
@@ -129,11 +130,24 @@ export default function Home() {
     if (!next.size || next.size > 200 * 1024 * 1024) { setUploadError('Выберите непустой файл размером до 200 МБ.'); return; }
     setFile(next);
   }
+  async function removeDocument(document: ExportedDocument) {
+    if (deletingDocument || !window.confirm(`Удалить документ «${document.title}»?`)) return;
+    setDeletingDocument(document.id); setDocumentsError('');
+    try {
+      if (!DEMO_MODE) await deleteDocument(document.id);
+      setDocuments(rows => rows.filter(row => row.id !== document.id));
+      if (previewDocument?.id === document.id) { documentDialog.current?.close(); setPreviewDocument(null); }
+    } catch (error) {
+      setDocumentsError(error instanceof Error ? error.message : 'Не удалось удалить документ.');
+    } finally { setDeletingDocument(null); }
+  }
   async function upload(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!file || uploading) return;
     if (DEMO_MODE) { setUploadError('Загрузка доступна после подключения сервера. Сейчас открыт демонстрационный проект.'); return; }
     const title = String(new FormData(event.currentTarget).get('title') ?? '').trim();
     if (!title) { setUploadError('Укажите название проекта.'); return; }
+    const normalizeTitle = (value: string) => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru');
+    if (meetings.some(m => normalizeTitle(m.title) === normalizeTitle(title))) { setUploadError('Проект с таким названием уже существует. Выберите другое название.'); return; }
     setUploading(true); setUploadError(''); const controller = new AbortController(); requestController.current = controller;
     // Cancel the initial list request so a late response cannot replace the new upload.
     initialController.current?.abort(); setLoading(false);
@@ -166,7 +180,7 @@ export default function Home() {
           <div className="page-heading"><div><div className="eyebrow">РАБОЧЕЕ ПРОСТРАНСТВО</div><h1>Документы</h1><p>{DEMO_MODE ? 'Деморежим: экспортированные ТЗ хранятся до закрытия вкладки.' : 'Технические задания, сохранённые при экспорте.'}</p></div></div>
           <label className="search list-search"><Icon name="search" size={18}/><input aria-label="Поиск документов" placeholder="Найти ТЗ…" value={globalQuery} onChange={e => setGlobalQuery(e.target.value)}/></label>
           {documentsError && <p className="error-banner" role="alert">{documentsError}</p>}
-          {documentsLoading ? <div className="empty-state" role="status">Загружаем документы…</div> : <div className="project-grid">{documents.filter(d => d.title.toLocaleLowerCase('ru').includes(globalQuery.toLocaleLowerCase('ru'))).map(d => <article className="project-card" key={d.id}><span className="tile-icon"><Icon name="file" size={25}/></span><h2>{d.title}</h2><p>Экспорт: {new Date(d.created_at).toLocaleString('ru-RU')}</p><div className="document-card-actions"><button className="button secondary" onClick={() => {setPreviewDocument(d); documentDialog.current?.showModal();}}>Открыть</button><button className="button primary" onClick={() => downloadFile(d.title, d.content)}><Icon name="download" size={16}/>Скачать</button></div></article>)}</div>}
+          {documentsLoading ? <div className="empty-state" role="status">Загружаем документы…</div> : <div className="project-grid">{documents.filter(d => d.title.toLocaleLowerCase('ru').includes(globalQuery.toLocaleLowerCase('ru'))).map(d => <article className="project-card" key={d.id}><span className="tile-icon"><Icon name="file" size={25}/></span><h2>{d.title}</h2><p>Экспорт: {new Date(d.created_at).toLocaleString('ru-RU')}</p><div className="document-card-actions"><button className="button secondary" onClick={() => {setPreviewDocument(d); documentDialog.current?.showModal();}}>Открыть</button><button className="button primary" onClick={() => downloadFile(d.title, d.content)}><Icon name="download" size={16}/>Скачать</button><button className="button secondary" disabled={deletingDocument !== null} onClick={() => void removeDocument(d)} aria-label={`Удалить документ: ${d.title}`}><Icon name="trash" size={16}/>{deletingDocument === d.id ? 'Удаляем…' : 'Удалить'}</button></div></article>)}</div>}
           {!documentsLoading && !documentsError && !documents.filter(d => d.title.toLocaleLowerCase('ru').includes(globalQuery.toLocaleLowerCase('ru'))).length && <div className="empty-state"><Icon name="file" size={36}/><h2>{globalQuery ? 'Документы не найдены' : 'Пока нет документов'}</h2><p>Нажмите «Экспорт ТЗ» в проекте — документ появится здесь.</p></div>}
         </> : loading ? <div className="empty-state" role="status"><span className="spinner"/><h1>Загружаем встречи</h1><p>Получаем данные с сервера…</p></div> : view !== 'workspace' ? <>
           <div className="page-heading"><div><div className="eyebrow">ВАШЕ РАБОЧЕЕ ПРОСТРАНСТВО</div><h1>Проекты</h1><p>Разговоры менеджера и заказчика, из которых рождаются продукты.</p></div><button className="button primary" onClick={() => uploadDialog.current?.showModal()}><Icon name="plus"/>Новая встреча</button></div>
@@ -180,7 +194,7 @@ export default function Home() {
           <div className="workspace-grid"><section className="panel recording"><div className="panel-heading"><h2>Запись встречи</h2><span className="label-muted">АУДИО</span></div><div className="audio-file"><span className="file-icon"><Icon name="file" size={24}/></span><div><b>{meeting.filename || 'Запись встречи'}</b><small>{time(meeting.duration)}{DEMO_MODE ? ' · Демонстрационная запись' : ''}</small></div></div>
             {meeting.audio_url ? <><audio key={meeting.audio_url} ref={audio} controls preload="metadata" src={meeting.audio_url} onTimeUpdate={e => setAudioTime(e.currentTarget.currentTime)} onError={() => setAudioFailed(true)} aria-label="Аудиозапись встречи"/>{audioFailed && <p className="field-error" role="alert">Не удалось воспроизвести запись. Проверьте доступность аудиофайла на сервере.</p>}</> : <div className="audio-placeholder"><span className="muted-play"><Icon name="play"/></span><div className="waveform" aria-hidden="true">{Array.from({length: 62}, (_, i) => <i key={i} style={{height: `${7 + ((i * 19 + i * i * 7) % 33)}px`}}/>)}</div><span className="audio-note">Аудио недоступно{DEMO_MODE ? ' в деморежиме' : ''}</span></div>}
             <div className="transcript-heading"><h2>Расшифровка</h2><span className="count-badge">{meeting.transcript.length} реплик</span></div><div className="transcript-filters"><label className="search"><Icon name="search" size={17}/><input placeholder="Поиск по расшифровке…" aria-label="Поиск по расшифровке" value={query} onChange={e => setQuery(e.target.value)}/>{query && <button aria-label="Очистить поиск" onClick={() => setQuery('')}><Icon name="close" size={14}/></button>}</label><select aria-label="Фильтр по участнику" value={speaker} onChange={e => setSpeaker(e.target.value)}><option value="all">Все участники</option>{speakers.map(s => <option key={s}>{s}</option>)}</select></div>
-            <div className="transcript-list">{segments.map(s => <button key={s.id} id={`source-${s.start}`} className={`transcript-row ${activeSource === s.start ? 'active' : ''}`} onClick={() => jump(s.start)}><span className={`speaker-avatar ${speakers.indexOf(s.speaker) % 2 ? 'mint' : ''}`}>{s.speaker.slice(0, 1)}</span><span className="utterance"><span className="utterance-meta"><b>{s.speaker}</b><span>·</span><time title={s.timing_estimated ? "Время оценено по тексту, не по аудио" : undefined}>{s.timing_estimated ? "" : ""}{time(s.start)}</time>{s.timing_estimated && <span title="Границы выделены по тексту, время приблизительное">Разбито по тексту</span>}</span><span className="utterance-text">{s.text}</span></span></button>)}{!segments.length && <div className="inline-empty">{meeting.transcript.length ? 'Реплики не найдены. Измените поиск или фильтр.' : meeting.status === 'processing' ? 'Ожидаем расшифровку…' : 'Сервер ещё не передал расшифровку.'}</div>}</div>
+            <div className="transcript-list">{segments.map(s => <button key={s.id} id={`source-${s.start}`} className={`transcript-row ${activeSource === s.start ? 'active' : ''}`} onClick={() => jump(s.start)}><span className={`speaker-avatar ${speakers.indexOf(s.speaker) % 2 ? 'mint' : ''}`}>{s.speaker.slice(0, 1)}</span><span className="utterance"><span className="utterance-meta"><b>{s.speaker}</b><span>·</span><time title={s.timing_estimated ? "Время оценено по тексту, не по аудио" : undefined}>{s.timing_estimated ? "≈ " : ""}{time(s.start)}</time>{s.timing_estimated && <span title="Границы выделены по тексту, время приблизительное">Разбито по тексту</span>}</span><span className="utterance-text">{s.text}</span></span></button>)}{!segments.length && <div className="inline-empty">{meeting.transcript.length ? 'Реплики не найдены. Измените поиск или фильтр.' : meeting.status === 'processing' ? 'Ожидаем расшифровку…' : 'Сервер ещё не передал расшифровку.'}</div>}</div>
             <div className="transcript-footer"><Icon name="clock" size={14}/>{meeting.audio_url ? `Позиция воспроизведения: ${time(audioTime)}` : 'Нажмите на источник, чтобы найти реплику'}</div>
           </section>
           <div className="right-column"><section className="panel requirements-panel"><header className="analysis-panel-title"><Icon name="list" size={19}/><h2>Анализ разговора</h2></header>

@@ -2,8 +2,8 @@
 
 import { useRef, useState } from 'react';
 import { Icon } from './icon';
-import { ANALYSIS_SECTIONS, analysisItems, time, participantLabel } from '@/lib/meeting';
-import type { AnalysisItem, AnalysisKind, Meeting } from '@/lib/meeting';
+import { ANALYSIS_SECTIONS, PRIORITY_LABELS, sortByPriority, analysisItems, time, participantLabel } from '@/lib/meeting';
+import type { AnalysisItem, AnalysisKind, Meeting, Priority } from '@/lib/meeting';
 
 type Props = {
   meeting: Meeting;
@@ -15,7 +15,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
   const editor = useRef<HTMLDialogElement>(null);
   const [editing, setEditing] = useState<AnalysisItem | null>(null);
   const [kind, setKind] = useState<AnalysisKind>('functional');
-  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>(() => Object.fromEntries(ANALYSIS_SECTIONS.map(section => [section.key, true])));
+  const [collapsed, setCollapsed] = useState<Partial<Record<AnalysisKind, boolean>>>({});
   const [version, setVersion] = useState(0);
   const [formError, setFormError] = useState('');
   const [deleted, setDeleted] = useState<{item: AnalysisItem; index: number} | null>(null);
@@ -38,6 +38,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
       ...editing, id: editing?.id ?? crypto.randomUUID(), kind, title,
       description: String(data.get('description') ?? '').trim(),
       role: String(data.get('role') ?? '').trim(), source: editing?.source ?? null,
+      priority: (String(data.get('priority') ?? '') || null) as Priority | null,
       needs_clarification: data.get('clarification') === 'on',
     };
     update(rows => editing ? rows.map(row => row.id === item.id ? item : row) : [...rows, item]);
@@ -60,7 +61,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
     {deleted && <div className="analysis-undo" role="status"><span>Удалено: {deleted.item.title}</span><button disabled={!editable} onClick={undo}>Отменить удаление</button></div>}
     <div className="analysis-containers">
       {ANALYSIS_SECTIONS.map((section) => {
-        const rows = items.filter(item => item.kind === section.key);
+        const rows = sortByPriority(items.filter(item => item.kind === section.key));
         return <section className="analysis-container" key={section.key} aria-labelledby={`analysis-${section.key}`}>
           <header className={`analysis-container-header ${collapsed[section.key] ? 'is-collapsed' : ''}`}>
             <h3 id={`analysis-${section.key}`} className="analysis-collapse-heading">
@@ -82,6 +83,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
                 <button disabled={!editable} title="Редактировать" aria-label={`Редактировать: ${item.title}`} onClick={() => edit(section.key, item)}><Icon name="edit" size={16}/></button>
                 <button disabled={!editable} className="delete-card" title="Удалить" aria-label={`Удалить: ${item.title}`} onClick={() => remove(item)}><Icon name="trash" size={16}/></button>
               </div></div>
+              <span className={`priority-badge priority-${item.priority ?? 'unknown'}`}>Приоритет: {item.priority ? PRIORITY_LABELS[item.priority] : 'Не определён'}</span>
               {item.role && <span className="analysis-role">{participantLabel(item.role)}</span>}
               {item.description && <p className="analysis-description">{item.description}</p>}
               <div className="analysis-card-footer">
@@ -104,6 +106,7 @@ export function RequirementsBoard({ meeting, onUpdate, onSource }: Props) {
       <label className="form-field">Название или формулировка<input autoFocus name="title" required maxLength={1000} defaultValue={editing?.title}/></label>
       <label className="form-field">Описание<textarea name="description" rows={4} maxLength={10000} defaultValue={editing?.description} placeholder="Подробности, условия или последовательность действий"/></label>
       <label className="form-field">Роль или участник <span className="optional-label">необязательно</span><input name="role" maxLength={100} defaultValue={editing?.role} placeholder="Менеджер или заказчик"/></label>
+      <label className="form-field">Приоритет<select name="priority" defaultValue={editing?.priority ?? ''}><option value="">Не определён</option>{Object.entries(PRIORITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="question-resolve"><input type="checkbox" name="clarification" defaultChecked={editing?.needs_clarification}/>Требует уточнения</label>
       {formError && <p className="field-error" role="alert">{formError}</p>}
       <p className="form-hint">Правки действуют в текущей сессии и включаются в экспорт ТЗ.</p>

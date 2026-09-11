@@ -15,6 +15,10 @@ from typing import Optional
 from app.schemas import Analysis, Item, ItemType, TranscriptSegment
 
 
+class DuplicateProjectTitle(ValueError):
+    """A project with this normalized title already exists."""
+
+
 class Storage(ABC):
     # --- Анализы ----------------------------------------------------------
 

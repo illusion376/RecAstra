@@ -1,5 +1,11 @@
+export type Priority = 'must' | 'should' | 'could' | 'wont';
+export const PRIORITY_LABELS: Record<Priority, string> = { must: 'Высокий', should: 'Средний', could: 'Низкий', wont: 'Вне текущего объёма' };
+export function sortByPriority(items: AnalysisItem[]): AnalysisItem[] {
+  const order = { must: 0, should: 1, could: 2, wont: 3 };
+  return [...items].sort((a, b) => (a.priority ? order[a.priority] : 4) - (b.priority ? order[b.priority] : 4));
+}
 export type Segment = { timing_estimated?: boolean; id: string; speaker: string; start: number; text: string };
-export type Requirement = { role?: string; needs_clarification?: boolean; id: string; title: string; description: string; category: 'functional' | 'nonfunctional'; source: number | null };
+export type Requirement = { priority?: Priority | null; role?: string; needs_clarification?: boolean; id: string; title: string; description: string; category: 'functional' | 'nonfunctional'; source: number | null };
 export type Question = { needs_clarification?: boolean; constraint_index?: number; id: string; text: string; source: number | null; resolved: boolean };
 const SUPPORTED_ANALYSIS_SECTIONS = [
   { key: 'functional', title: 'Функциональные требования', icon: 'list' },
@@ -14,6 +20,7 @@ const SUPPORTED_ANALYSIS_SECTIONS = [
 export const ANALYSIS_SECTIONS = SUPPORTED_ANALYSIS_SECTIONS.filter(section => section.key !== 'roles');
 export type AnalysisKind = typeof SUPPORTED_ANALYSIS_SECTIONS[number]['key'];
 export type AnalysisItem = {
+  priority?: Priority | null;
   id: string; kind: AnalysisKind; title: string; description: string;
   source: number | null; role?: string; needs_clarification?: boolean; resolved?: boolean;
 };
@@ -38,11 +45,12 @@ export function analysisItems(meeting: Meeting): AnalysisItem[] {
   ];
 }
 export function specification(meeting: Meeting) {
-  const items = analysisItems(meeting);
+  const items = sortByPriority(analysisItems(meeting));
   return [`# Техническое задание\n\n${meeting.title}`, 'Статус: черновик. Требует проверки и согласования.',
     ...ANALYSIS_SECTIONS.map(section => `## ${section.title}\n\n` + (items.filter(item => item.kind === section.key).map((item, i) => {
       const title = item.kind === 'questions' ? `- [${item.resolved ? 'x' : ' '}] ${item.title}` : `${i + 1}. **${item.title}**`;
       return title + (item.description ? `\n   ${item.description}` : '')
+        + (item.priority ? `\n   Приоритет: ${PRIORITY_LABELS[item.priority]}` : '')
         + (item.role ? `\n   Роль: ${participantLabel(item.role)}` : '')
         + (item.needs_clarification ? '\n   Требуется уточнение' : '')
         + (item.source !== null ? `\n   Источник: ${time(item.source)}` : '');
@@ -70,6 +78,7 @@ export function parseMeeting(value: unknown): Meeting {
     if (!Array.isArray(m.analysis) || !m.analysis.every(item => item && string(item.id) && item.id.length > 0
       && SUPPORTED_ANALYSIS_SECTIONS.some(section => section.key === item.kind)
       && string(item.title) && item.title.trim().length > 0 && string(item.description) && source(item.source)
+      && (item.priority == null || ['must', 'should', 'could', 'wont'].includes(item.priority))
       && (item.role === undefined || string(item.role))
       && (item.needs_clarification === undefined || typeof item.needs_clarification === 'boolean')
       && (item.resolved === undefined || typeof item.resolved === 'boolean'))) return fail();

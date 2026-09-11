@@ -8,10 +8,11 @@ In-memory реализация хранилища.
 from __future__ import annotations
 
 import asyncio
+import unicodedata
 from typing import Optional
 
 from app.schemas import Analysis, Item, ItemType, TranscriptSegment
-from app.storage.base import Storage
+from app.storage.base import Storage, DuplicateProjectTitle
 
 
 class MemoryStorage(Storage):
@@ -25,6 +26,14 @@ class MemoryStorage(Storage):
 
     async def create_analysis(self, analysis: Analysis) -> Analysis:
         async with self._lock:
+            title = " ".join(unicodedata.normalize("NFKC", analysis.meta.title or "").split())
+            if title and any(
+                other.id != analysis.id and
+                " ".join(unicodedata.normalize("NFKC", other.meta.title or "").split()).casefold() == title.casefold()
+                for other in self._analyses.values()
+            ):
+                raise DuplicateProjectTitle("Проект с таким названием уже существует. Выберите другое название.")
+            analysis.meta.title = title or None
             self._analyses[analysis.id] = analysis
             self._items.setdefault(analysis.id, {})
             self._segments.setdefault(analysis.id, [])

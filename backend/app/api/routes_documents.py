@@ -48,3 +48,13 @@ def save_document(body: DocumentCreate, settings: Settings = Depends(get_setting
     finally:
         temporary.unlink(missing_ok=True)
     return document
+
+
+@router.delete('/{document_id}')
+def delete_document(document_id: UUID, settings: Settings = Depends(get_settings)):
+    path = Path(settings.documents_dir) / f'{document_id}.json'
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        raise HTTPException(404, 'Документ уже удалён или не найден')
+    return {'id': str(document_id), 'deleted': True}

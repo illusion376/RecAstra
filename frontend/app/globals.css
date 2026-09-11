@@ -117,3 +117,10 @@
 
 .analysis-item-count{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:25px;padding:0 7px;border-radius:6px;background:#edf3fd;color:#6784b4;font-size:12px;font-weight:600;flex-shrink:0;font-variant-numeric:tabular-nums}
 .analysis-container:nth-child(even) .analysis-item-count{background:#f0eafa;color:#9276b8}
+
+.priority-badge { display: inline-block; padding: 4px 9px; border-radius: 6px; margin: 6px 8px 6px 0; font-size: 12px; background: #edf1f7; color: #53627a; }
+.priority-must { background: #fff0ee; color: #a72b21; }
+.priority-should { background: #fff6dd; color: #805800; }
+.priority-could { background: #eaf7ef; color: #226b40; }
+.priority-wont { background: #f0ebf9; color: #6b4592; }
+.document-card-actions { flex-wrap: wrap; }
