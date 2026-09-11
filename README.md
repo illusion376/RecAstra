@@ -128,6 +128,44 @@ npm run dev
 Ключи — только в `.env`, оба файла в `.gitignore`. Без `.env` бэкенд
 поднимается на `mock` и работает без сети.
 
+### Через Docker
+
+Нужен только Docker (Docker Desktop на Mac и Windows). Из корня репозитория:
+
+```bash
+cp backend/.env.example backend/.env   # по желанию: ключи LLM и Nexara
+docker compose up --build              # первая сборка — несколько минут
+```
+
+Фронтенд — <http://localhost:3000>, API — <http://localhost:8000/docs>.
+Без `backend/.env` бэкенд работает на `mock`.
+
+| Команда | Что делает |
+|---|---|
+| `docker compose up -d --build` | собрать и запустить в фоне |
+| `docker compose logs -f backend` | логи бэкенда |
+| `docker compose down` | остановить; данные остаются |
+| `docker compose down -v` | остановить и **удалить** базу и записи |
+
+- База SQLite, секрет токенов и загруженные записи лежат в томах
+  `recastra_backend-data` и `recastra_backend-media` и переживают пересборку.
+  Резервная копия базы (через `backup`: сам файл без журнала WAL может
+  оказаться неполным):
+
+  ```bash
+  docker compose exec backend python -c "import sqlite3; sqlite3.connect('/app/data/recastra.db').backup(sqlite3.connect('/app/data/backup.db'))"
+  docker compose cp backend:/app/data/backup.db ./recastra-backup.db
+  ```
+- Адрес API вшивается во фронтенд при сборке. Для сервера создайте рядом
+  с `docker-compose.yml` файл `.env` со строкой
+  `NEXT_PUBLIC_API_URL=http://<адрес-сервера>:8000` и пересоберите:
+  `docker compose up -d --build frontend`. Там же меняются порты —
+  `FRONTEND_PORT`, `BACKEND_PORT`. На сервере задайте в `backend/.env`
+  `AUTH_SECRET` и `CORS_ORIGINS` с адресом фронтенда.
+- Бэкенд работает одним процессом: встречи обрабатываются фоновыми задачами
+  внутри него, а SQLite не рассчитан на много пишущих процессов.
+- Для разработки удобнее запуск без Docker (выше): там горячая перезагрузка.
+
 ### Проверка
 
 ```bash
@@ -181,6 +219,7 @@ python check.py --show-source   # посмотреть готовое ТЗ гл�
 ## Структура репозитория
 
 ```
+docker-compose.yml  бэкенд + фронтенд одной командой
 backend/          FastAPI
   app/
     api/          ручки: /meetings, /documents, /api/v1
